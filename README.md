@@ -31,34 +31,49 @@ echo "deb [signed-by=/usr/share/keyrings/reckon-archive-keyring.asc] https://iam
 sudo apt update && sudo apt install reckon
 ```
 
-Put `nightly` in place of `stable` for the nightly builds.
+The `stable` channel follows releases and is empty until the first one;
+put `nightly` in its place for the nightly builds.
 
 ## Using it
 
 The window has three tabs, Calculator, Graph and Script, with the side
-panel next to them; View → Calculator (Ctrl+L), Graph (Ctrl+G) and
-Script (Ctrl+J) switch between them. The Calculator tab is the display
-with the expression line under it. Enter evaluates; the result appears under the expression, right-aligned, and
-becomes `ans`. While typing, the result so far shows above the line, the
-expression is colored by what its parts are, and a popup completes the
-names of functions and variables (Tab or Enter takes one). Up and Down
-walk through earlier expressions, Escape clears the line. A click on a
-result in the display puts its name, such as `$3`, into the line; the
-entry's menu inserts the value or the expression instead.
+panel next to them; View → Calculator, Graph and Script switch between
+them. The Calculator tab is the display with the expression line under
+it. Enter evaluates; the result appears under the expression,
+right-aligned, and becomes `ans`. While typing, the result so far shows
+above the line, the expression is colored by what its parts are, and a
+popup completes the names of functions and variables (Tab or Enter
+takes one). Up and Down walk through earlier expressions, Escape clears
+the line. A click on a result in the display puts its name, such as
+`$3`, into the line; the entry's menu inserts the value or the
+expression instead. The keypad, part of the Calculator tab, has the
+digits, operators and common functions for clicking.
 
-The side panel (Ctrl+P) has the variables, the built-in functions, a
-table of constants, the history and your own functions, each with a
-search box. It serves all three tabs: a click inserts the name into the
-current tab's input, the expression line, the curve typed in last, or
-the script at its cursor. The variables tab manages them. The plus and
-the pencil open one editor for `name = expression`, empty to add a
-variable or filled in to change one; it says what is wrong with the text
-while you type, and Enter applies it once nothing is. A new name there
-renames the variable everywhere it is used. The cross removes one, as
-it does your functions, and a badge counts the entries, functions and
-graph curves using each. The keypad
-(Ctrl+K), part of the Calculator tab, has the digits, operators and
-common functions for clicking.
+The side panel has the variables, the built-in functions, a table of
+constants, the history and your own functions, each with a search box.
+It serves all three tabs: a click inserts the name into the current
+tab's input, the expression line, the curve typed in last, or the
+script at its cursor.
+
+The variables tab manages the variables. The plus and the pencil open
+one editor for `name = expression`, empty to add a variable or filled
+in to change one; it says what is wrong with the text while you type,
+and Enter applies it once nothing is. A new name there renames the
+variable everywhere it is used. The cross removes one, as it does your
+functions, and a badge counts the entries, functions and graph curves
+using each.
+
+| Keys | Does |
+| --- | --- |
+| Enter | Evaluate the expression line |
+| Up, Down | Earlier expressions |
+| Escape | Clear the line, or leave an edit |
+| Ctrl+L, Ctrl+G, Ctrl+J | Calculator, Graph or Script tab |
+| Ctrl+P, Ctrl+K | Show or hide the side panel, the keypad |
+| Ctrl+1 … Ctrl+5 | Variables, functions, constants, history, your functions |
+| Ctrl+R, Ctrl+E | Copy the last result, the last expression |
+| Ctrl+Enter | Run the script |
+| Ctrl+N, Ctrl+O, Ctrl+S | New, open and save a session |
 
 ### A live history
 
@@ -89,8 +104,9 @@ copying a number, and `f(x) = x * k` reads `k` whenever it runs.
   its entry. Removing one takes the assignment out of every entry making
   it, and everything using it, entries, functions and curves, gets its
   last value written in instead, so `y = x * 2` becomes `y = 5 * 2` and
-  keeps its result. Removing such a function removes its definitions. Clearing the history
-  keeps their last values as plain variables and functions.
+  keeps its result. Removing such a function removes its definitions.
+  Clearing the history keeps their last values as plain variables and
+  functions.
 
 ### Expressions
 
@@ -112,7 +128,9 @@ Results come out in the format and precision set in the Settings menu or
 the status bar: general, fixed, scientific, engineering, binary, octal or
 hexadecimal, with automatic or a fixed number of decimals, optionally with
 digits grouped in threes. Numbers are IEEE doubles, so there are 15
-significant digits to go by.
+significant digits to go by. Settings → Settings… also turns the result
+while typing, the completion and the coloring on or off, picks the
+fonts, and decides whether the last session comes back at startup.
 
 ### Sessions
 
@@ -186,9 +204,18 @@ ctest --test-dir build --output-on-failure
 ./build/bin/reckon
 ```
 
-`cmake --install build` also installs a desktop file and the icon.
-`tst_ui` saves screenshots of the window when `RECKON_SCREENSHOT_DIR` is
-set.
+The app and the tests are built into `build/bin`. `cmake --install build`
+also installs a desktop file and the icon. `tst_ui` saves screenshots of
+the window, the ones in `docs/screenshots`, when `RECKON_SCREENSHOT_DIR`
+is set.
+
+## Releases
+
+The nightly workflow builds and tests every night with new commits, or
+whenever it is run by hand, and replaces the nightly release and the
+APT repository's nightly channel. Running the Promote Release workflow
+with a version number, such as 1.2.0, turns the current nightly into the
+release v1.2.0 with the same downloads, and fills the stable channel.
 
 ## Layout
 
@@ -207,6 +234,12 @@ set.
   `Display`, `Editor` with its completer and `Keypad`, the `GraphPane`
   and the `ScriptPane`; and the `SidePanel` they share, with its
   `NameList`s. QML module `Reckon`.
+- `tests` — the expression engine, the formatter and the calculator as
+  QtTest suites, and `tst_ui`, which drives the whole window offscreen
+  and fails on any QML warning.
+- `packaging/deb`, `.github/workflows`, `pages` — the Debian package and
+  APT repository, the nightly, APT and release workflows, and the start
+  page on GitHub Pages.
 
 ## Ideas
 
