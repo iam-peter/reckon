@@ -8,6 +8,8 @@
 
 #include <QObject>
 #include <QUrl>
+
+#include <optional>
 #include <QtQml/qqmlregistration.h>
 
 
@@ -87,11 +89,23 @@ public:
     // takes the value the expression has now. The error, empty when it
     // worked, in which case nothing changed.
     Q_INVOKABLE QString setVariable(const QString &name, const QString &expression);
+    // Adds `name = expression` to the history, which binds it. The error,
+    // empty when it worked, in which case nothing changed.
+    Q_INVOKABLE QString addVariable(const QString &assignment);
+    // Removes a variable; whatever refers to it gets its last value.
     Q_INVOKABLE void removeVariable(const QString &name);
     Q_INVOKABLE void clearVariables();
     Q_INVOKABLE void removeUserFunction(const QString &name);
     Q_INVOKABLE void clearUserFunctions();
     Q_INVOKABLE void clearHistory();
+    // The Graph tab's curves, counted among the references to variables.
+    Q_INVOKABLE void setCurveExpressions(const QStringList &expressions);
+    // A curve with `name` written as `text`; x, the variable the curve is
+    // plotted over, stays.
+    Q_INVOKABLE QString replaceInCurve(const QString &expression, const QString &name, const QString &text) const
+    {
+        return name == QLatin1String("x") ? expression : Worksheet::replaceReferences(expression, name, text);
+    }
 
     // Sessions: the history, variables and functions as JSON.
     Q_INVOKABLE void newSession();
@@ -116,6 +130,8 @@ signals:
     void angleUnitChanged();
     void formatChanged();
     void sessionFileChanged();
+    // A variable went; what referred to it should say `value` instead.
+    void variableRemoved(const QString &name, const QString &value);
 
 private:
     void refreshVariables();
@@ -123,6 +139,11 @@ private:
     void refreshFunctions();
     void setSessionFile(const QString &file);
     void unbindVariable(const QString &name);
+    void forgetVariable(const QString &name);
+    std::optional<Number> currentValue(const QString &name) const;
+    static QString numberText(Number value);
+    // How many entries, functions and curves refer to each name.
+    QHash<QString, int> referenceCounts() const;
     void unbindFunction(const QString &name);
     // Records the error, if any, and says the calculator changed.
     void finish(const QString &error);
@@ -142,4 +163,5 @@ private:
     ScriptEngine *m_script;
     QString m_sessionFile;
     QString m_error;
+    QStringList m_curves;
 };

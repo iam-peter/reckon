@@ -20,6 +20,10 @@ ColumnLayout {
     // (name, text) => error: makes the user's entries editable, the
     // handler applying the new text and saying what is wrong with it.
     property var editHandler: null
+    // text => error: adds an entry from "name = expression".
+    property var addHandler: null
+    property bool adding: false
+    property string addError: ""
     property string placeholder: qsTr("Search")
     // The entry being edited, by name, which survives the list changing.
     property string editingName: ""
@@ -38,6 +42,7 @@ ColumnLayout {
         }
         editingName = ""
         editError = ""
+        editingFinished()
     }
 
     function cancel() {
@@ -45,18 +50,86 @@ ColumnLayout {
         editError = ""
     }
 
+    function startAdding() {
+        cancel()
+        addError = ""
+        adding = true
+    }
+
+    function add(text: string) {
+        const error = addHandler(text)
+        if (error !== "") {
+            addError = error
+            return
+        }
+        adding = false
+        addError = ""
+        editingFinished()
+    }
+
     signal insertRequested(string text)
     signal removeRequested(string name)
+    // Enter or Escape ended adding or editing: the tab's input is next.
+    signal editingFinished()
 
     spacing: 4
 
-    TextField {
+    RowLayout {
         Layout.fillWidth: true
         Layout.leftMargin: 6
         Layout.rightMargin: 6
-        placeholderText: list.placeholder
-        text: list.model.filter
-        onTextChanged: list.model.filter = text
+        spacing: 4
+        TextField {
+            Layout.fillWidth: true
+            placeholderText: list.placeholder
+            text: list.model.filter
+            onTextChanged: list.model.filter = text
+        }
+        IconButton {
+            objectName: "addVariable"
+            visible: list.addHandler !== null
+            iconName: "plus"
+            tip: qsTr("Add a variable")
+            onClicked: list.startAdding()
+        }
+    }
+
+    // A new one: Enter adds it, Escape or clicking elsewhere does not.
+    TextField {
+        id: addField
+        objectName: "variableAdder"
+        Layout.fillWidth: true
+        Layout.leftMargin: 6
+        Layout.rightMargin: 6
+        visible: list.adding
+        font: list.monoFont
+        placeholderText: qsTr("name = expression")
+        onVisibleChanged: {
+            if (!visible)
+                return
+            text = ""
+            forceActiveFocus()
+        }
+        onAccepted: list.add(text)
+        onActiveFocusChanged: {
+            if (!activeFocus)
+                list.adding = false
+        }
+        Keys.onEscapePressed: event => {
+            list.adding = false
+            event.accepted = true
+            list.editingFinished()
+        }
+    }
+    Label {
+        Layout.fillWidth: true
+        Layout.leftMargin: 8
+        Layout.rightMargin: 8
+        visible: list.adding && list.addError !== ""
+        text: list.addError
+        color: Theme.error
+        font.pointSize: list.uiFont.pointSize - 1
+        wrapMode: Text.WordWrap
     }
 
     ListView {
@@ -94,6 +167,7 @@ ColumnLayout {
             required property bool builtin
             required property string insertText
             required property string editText
+            required property int references
 
             readonly property bool editing: list.editingName !== "" && list.editingName === name
 
@@ -152,6 +226,22 @@ ColumnLayout {
                         Keys.onEscapePressed: event => {
                             list.cancel()
                             event.accepted = true
+                            list.editingFinished()
+                        }
+                    }
+                    // How many entries, functions and curves use it.
+                    Label {
+                        objectName: "referenceCount"
+                        visible: row.references > 0 && !row.editing
+                        text: row.references
+                        font.pointSize: list.uiFont.pointSize - 2
+                        color: Theme.preview
+                        leftPadding: 5
+                        rightPadding: 5
+                        background: Rectangle {
+                            radius: height / 2
+                            color: "transparent"
+                            border.color: Theme.separator
                         }
                     }
                     IconButton {
@@ -166,6 +256,7 @@ ColumnLayout {
                         onClicked: list.startEditing(row.name)
                     }
                     IconButton {
+                        objectName: "removeName"
                         visible: list.removable && !row.builtin
                         opacity: row.hovered ? 1 : 0.35
                         iconName: "x"

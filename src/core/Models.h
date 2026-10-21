@@ -79,6 +79,7 @@ struct NamedEntry
     bool builtin = false;
     QString insertText; // what a click puts into the expression
     QString editText; // a variable's expression, to edit it
+    int references = 0; // how many places refer to a variable
 };
 
 class NameListModel : public QAbstractListModel
@@ -92,7 +93,7 @@ class NameListModel : public QAbstractListModel
 public:
     enum Role {
         NameRole = Qt::UserRole + 1, ValueRole, DescriptionRole, CategoryRole, BuiltinRole, InsertTextRole,
-        EditTextRole,
+        EditTextRole, ReferencesRole,
     };
 
     using QAbstractListModel::QAbstractListModel;

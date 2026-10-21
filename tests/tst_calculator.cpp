@@ -158,7 +158,8 @@ private slots:
         QCOMPARE(calc.setVariable(u"$1"_s, u"3"_s), u"$1 cannot be changed"_s);
         calc.evaluate(u"f(x) = x"_s);
         QCOMPARE(calc.setVariable(u"f"_s, u"3"_s), u"f is a function"_s);
-        // Removing a variable takes it out of every entry assigning it.
+        // Removing a variable takes it out of every entry assigning it,
+        // and those using it get its last value.
         calc.evaluate(u"x = 1"_s);
         calc.evaluate(u"x = 2"_s);
         calc.evaluate(u"y = x"_s);
@@ -166,7 +167,107 @@ private slots:
         calc.removeVariable(u"x"_s);
         QCOMPARE(calc.history()->expressionAt(rows - 3), u"1"_s);
         QCOMPARE(calc.history()->expressionAt(rows - 2), u"2"_s);
-        QCOMPARE(errorAt(calc, rows - 1), u"Unknown variable x"_s);
+        QCOMPARE(calc.history()->expressionAt(rows - 1), u"y = 2"_s);
+    }
+
+    void removedVariablesLeaveTheirValue()
+    {
+        Calculator calc;
+        QSignalSpy removed(&calc, &Calculator::variableRemoved);
+        calc.evaluate(u"a = 5"_s);
+        calc.evaluate(u"b = a * 2"_s);
+        calc.evaluate(u"c = 2a"_s);
+        calc.evaluate(u"d = a^2 + a(1)"_s);
+        calc.evaluate(u"f(t) = t + a"_s);
+        calc.evaluate(u"f(1)"_s);
+        calc.evaluate(u"g(a) = a + 1"_s);
+        // Counted where they are used: entries, functions and curves.
+        NameListModel *variables = calc.variables();
+        auto references = [variables](const QString &name) {
+            for (int row = 0; row < variables->count(); ++row) {
+                if (variables->nameAt(row) == name)
+                    return variables->data(variables->index(row), NameListModel::ReferencesRole).toInt();
+            }
+            return -1;
+        };
+        QCOMPARE(references(u"a"_s), 4);
+        QCOMPARE(references(u"b"_s), 0);
+        calc.setCurveExpressions({u"a sin(x)"_s, u"x"_s});
+        QCOMPARE(references(u"a"_s), 5);
+        QCOMPARE(variables->data(variables->index(3), NameListModel::DescriptionRole).toString(),
+                 u"Defined by $1, used in 5 places"_s);
+
+        calc.removeVariable(u"a"_s);
+        QCOMPARE(calc.history()->expressionAt(0), u"5"_s);
+        QCOMPARE(calc.history()->expressionAt(1), u"b = 5 * 2"_s);
+        QCOMPARE(calc.history()->expressionAt(2), u"c = 2(5)"_s);
+        QCOMPARE(calc.history()->expressionAt(3), u"d = 5^2 + (5)(1)"_s);
+        QCOMPARE(calc.history()->expressionAt(4), u"f(t) = t + 5"_s);
+        // A parameter of the same name is not the variable.
+        QCOMPARE(calc.history()->expressionAt(6), u"g(a) = a + 1"_s);
+        QCOMPARE(resultAt(calc, 1), u"10"_s);
+        QCOMPARE(resultAt(calc, 2), u"10"_s);
+        QCOMPARE(resultAt(calc, 3), u"30"_s);
+        QCOMPARE(resultAt(calc, 5), u"6"_s);
+        QCOMPARE(removed.count(), 1);
+        QCOMPARE(removed[0][0].toString(), u"a"_s);
+        QCOMPARE(removed[0][1].toString(), u"5"_s);
+        QCOMPARE(calc.replaceInCurve(u"a sin(x)"_s, u"a"_s, u"5"_s), u"(5) sin(x)"_s);
+        QCOMPARE(calc.replaceInCurve(u"sin(a) + (a)"_s, u"a"_s, u"5"_s), u"sin(5) + (5)"_s);
+        // A curve's x is what it is plotted over, never the variable x.
+        QCOMPARE(calc.replaceInCurve(u"sin(x)"_s, u"x"_s, u"5"_s), u"sin(x)"_s);
+
+        // Negative numbers keep to themselves, other numbers stay exact.
+        calc.evaluate(u"n = -3"_s);
+        calc.evaluate(u"m = n^2"_s);
+        calc.removeVariable(u"n"_s);
+        QCOMPARE(calc.history()->expressionAt(8), u"m = (-3)^2"_s);
+        QCOMPARE(resultAt(calc, 8), u"9"_s);
+        QVERIFY(calc.script()->run(u"calc.set('w', 0.1)"_s));
+        calc.evaluate(u"k = w * 10"_s);
+        calc.removeVariable(u"w"_s);
+        QCOMPARE(calc.history()->expressionAt(9), u"k = 0.1 * 10"_s);
+        // One without a value leaves its references to say so.
+        calc.evaluate(u"z = 1 / 0"_s);
+        calc.evaluate(u"z + 1"_s);
+        calc.removeVariable(u"z"_s);
+        QCOMPARE(errorAt(calc, 11), u"Unknown variable z"_s);
+        // Wiping them all does the same for each.
+        calc.evaluate(u"p = 2"_s);
+        calc.evaluate(u"q = p + 1"_s);
+        calc.evaluate(u"p q"_s);
+        calc.clearVariables();
+        QCOMPARE(calc.history()->expressionAt(13), u"2 + 1"_s);
+        QCOMPARE(calc.history()->expressionAt(14), u"(2) (3)"_s);
+        QCOMPARE(resultAt(calc, 14), u"6"_s);
+    }
+
+    void variablesCanBeAdded()
+    {
+        Calculator calc;
+        QCOMPARE(calc.addVariable(u" r = 3 * 2 "_s), QString());
+        QCOMPARE(calc.history()->expressionAt(0), u"r = 3 * 2"_s);
+        QVERIFY(calc.isVariable(u"r"_s));
+        QCOMPARE(calc.addVariable(u"r = 1"_s), u"r is a variable already"_s);
+        QCOMPARE(calc.addVariable(u"pi = 1"_s), u"pi cannot be a variable"_s);
+        QCOMPARE(calc.addVariable(u"sin = 1"_s), u"sin cannot be a variable"_s);
+        QCOMPARE(calc.addVariable(u"3"_s), u"Expected a name, = and its value"_s);
+        QCOMPARE(calc.addVariable(u"a = b = 1"_s), u"Expected a name, = and its value"_s);
+        QCOMPARE(calc.addVariable(u"f(x) = x"_s), u"Expected a name, = and its value"_s);
+        QCOMPARE(calc.addVariable(u"s = zz"_s), u"Unknown variable zz"_s);
+        QCOMPARE(calc.addVariable(u"s ="_s), u"Expression is incomplete"_s);
+        QCOMPARE(calc.history()->count(), 1);
+        // Curves do not use a variable named x: theirs is the plot's.
+        QCOMPARE(calc.addVariable(u"x = 2"_s), QString());
+        calc.setCurveExpressions({u"sin(x)"_s, u"x r"_s});
+        NameListModel *variables = calc.variables();
+        for (int row = 0; row < variables->count(); ++row) {
+            const int used = variables->data(variables->index(row), NameListModel::ReferencesRole).toInt();
+            if (variables->nameAt(row) == u"x"_s)
+                QCOMPARE(used, 0);
+            if (variables->nameAt(row) == u"r"_s)
+                QCOMPARE(used, 1);
+        }
     }
 
     void editsUpdateWhatDependsOnThem()

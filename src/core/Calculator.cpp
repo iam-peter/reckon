@@ -10,6 +10,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocale>
 #include <QSaveFile>
 #include <QStandardPaths>
 
@@ -289,13 +290,66 @@ void Calculator::unbindFunction(const QString &name)
     }
 }
 
+// A value written into an expression: exact, as short as that allows.
+QString Calculator::numberText(Number value)
+{
+    return QString::number(value, 'g', QLocale::FloatingPointShortest);
+}
+
+std::optional<Number> Calculator::currentValue(const QString &name) const
+{
+    const int owner = m_sheet.ownerIndex(name);
+    if (owner >= 0) {
+        const Worksheet::Entry &entry = m_sheet.entries()[owner];
+        if (entry.definesFunction || !entry.error.isEmpty())
+            return std::nullopt;
+        return entry.value;
+    }
+    const auto it = m_env.variables().constFind(name);
+    if (it == m_env.variables().cend())
+        return std::nullopt;
+    return *it;
+}
+
+// Whatever referred to the variable gets the value it had last, written
+// out, so it keeps its result: entries, functions and, through
+// variableRemoved, the curves. One without a value, having an error,
+// leaves the references to report it.
+void Calculator::forgetVariable(const QString &name)
+{
+    const std::optional<Number> value = currentValue(name);
+    if (m_sheet.ownerIndex(name) >= 0 && !m_sheet.isFunction(name))
+        unbindVariable(name);
+    m_env.removeVariable(name);
+    if (!value)
+        return;
+    const QString text = numberText(*value);
+    for (int i = 0; i < m_sheet.size(); ++i) {
+        const QString &source = m_sheet.entries()[i].source;
+        const QString replaced = Worksheet::replaceReferences(source, name, text);
+        if (replaced != source)
+            m_sheet.edit(i, replaced);
+    }
+    const auto functions = m_env.userFunctions();
+    for (auto it = functions.cbegin(); it != functions.cend(); ++it) {
+        if (it->parameters.contains(name))
+            continue;
+        const QString body = Worksheet::replaceReferences(it->source, name, text);
+        if (body == it->source)
+            continue;
+        try {
+            m_env.defineFunction(it.key(), {it->parameters, parseExpression(body, functionPredicate()), body});
+        } catch (const CalcError &) {
+        }
+    }
+    emit variableRemoved(name, text);
+}
+
 void Calculator::removeVariable(const QString &name)
 {
     if (name == u"ans"_s || isResultName(name) || m_sheet.isEvaluating())
         return;
-    if (m_sheet.ownerIndex(name) >= 0 && !m_sheet.isFunction(name))
-        unbindVariable(name);
-    m_env.removeVariable(name);
+    forgetVariable(name);
     namesChanged({name});
 }
 
@@ -304,13 +358,81 @@ void Calculator::clearVariables()
     if (m_sheet.isEvaluating())
         return;
     QStringList names = m_env.variables().keys();
-    for (const QString &name : m_sheet.variableNames()) {
-        unbindVariable(name);
-        names.append(name);
-    }
+    names.removeAll(u"ans"_s);
+    names += m_sheet.variableNames();
+    names.removeDuplicates();
+    for (const QString &name : std::as_const(names))
+        forgetVariable(name);
     m_env.clearVariables();
     m_env.setVariable(u"ans"_s, 0);
     namesChanged(QSet<QString>(names.cbegin(), names.cend()));
+}
+
+QString Calculator::addVariable(const QString &text)
+{
+    if (m_sheet.isEvaluating())
+        return u"The history is updating"_s;
+    Statement statement;
+    try {
+        statement = parseStatement(text.trimmed(), functionPredicate());
+    } catch (const CalcError &error) {
+        return error.message;
+    }
+    if (statement.isDefinition() || statement.targets.size() != 1)
+        return u"Expected a name, = and its value"_s;
+    const QString name = statement.targets.first().name;
+    if (name == u"ans"_s || isResultName(name) || Environment::isConstant(name) || findBuiltinFunction(name))
+        return u"%1 cannot be a variable"_s.arg(name);
+    if (m_env.isFunction(name))
+        return u"%1 is a function"_s.arg(name);
+    if (m_env.hasVariable(name))
+        return u"%1 is a variable already"_s.arg(name);
+    try {
+        Environment scratch = m_env;
+        const Number value = statement.value->evaluate(scratch);
+        if (!std::isfinite(value))
+            return u"Not a number"_s;
+    } catch (const CalcError &error) {
+        return error.message;
+    }
+    // A binding like any other, in the history.
+    evaluate(u"%1 = %2"_s.arg(name, text.trimmed().mid(text.trimmed().indexOf(u'=') + 1).trimmed()));
+    return {};
+}
+
+void Calculator::setCurveExpressions(const QStringList &expressions)
+{
+    if (m_curves == expressions)
+        return;
+    m_curves = expressions;
+    refreshVariables();
+}
+
+QHash<QString, int> Calculator::referenceCounts() const
+{
+    QHash<QString, int> counts;
+    auto count = [&counts](const QString &source) {
+        for (const QString &name : Worksheet::referencedNames(source))
+            ++counts[name];
+    };
+    for (const Worksheet::Entry &entry : m_sheet.entries())
+        count(entry.source);
+    const auto &functions = m_env.userFunctions();
+    for (auto it = functions.cbegin(); it != functions.cend(); ++it) {
+        QSet<QString> names = Worksheet::referencedNames(it->source);
+        for (const QString &parameter : it->parameters)
+            names.remove(parameter);
+        for (const QString &name : std::as_const(names))
+            ++counts[name];
+    }
+    // In a curve, x is the variable it is plotted over, not the user's.
+    for (const QString &curve : m_curves) {
+        QSet<QString> names = Worksheet::referencedNames(curve);
+        names.remove(u"x"_s);
+        for (const QString &name : std::as_const(names))
+            ++counts[name];
+    }
+    return counts;
 }
 
 void Calculator::removeUserFunction(const QString &name)
@@ -451,20 +573,27 @@ void Calculator::refreshVariables()
     std::sort(names.begin(), names.end(), [](const QString &a, const QString &b) {
         return a.compare(b, Qt::CaseInsensitive) < 0;
     });
+    const QHash<QString, int> references = referenceCounts();
     entries.append({u"ans"_s, formatValue(m_env.variable(u"ans"_s)), u"The last result"_s, QString(), true, u"ans"_s});
     entries.append({u"pi"_s, formatValue(std::numbers::pi), u"Archimedes' constant"_s, QString(), true, u"pi"_s});
     entries.append({u"e"_s, formatValue(std::numbers::e), u"Euler's number"_s, QString(), true, u"e"_s});
     for (const QString &name : std::as_const(names)) {
         const int owner = m_sheet.ownerIndex(name);
+        const int used = references.value(name);
+        const QString usedBy = used == 0 ? QString()
+            : used == 1                  ? u"Used in one place"_s
+                                         : u"Used in %1 places"_s.arg(used);
         if (owner < 0) {
-            entries.append({name, formatValue(variables.value(name)), QString(), QString(), false, name,
-                            QString::number(variables.value(name), 'g', 15)});
+            entries.append({name, formatValue(variables.value(name)), usedBy, QString(), false, name,
+                            numberText(variables.value(name)), used});
             continue;
         }
         // Bound by an entry: editing it changes that entry.
         const Worksheet::Entry &entry = m_sheet.entries()[owner];
+        const QString definedBy = u"Defined by %1"_s.arg(entry.name());
         entries.append({name, entry.error.isEmpty() ? formatValue(entry.value) : entry.error,
-                        u"Defined by %1"_s.arg(entry.name()), QString(), false, name, m_sheet.valueSource(owner)});
+                        usedBy.isEmpty() ? definedBy : u"%1, %2"_s.arg(definedBy, usedBy.toLower()), QString(),
+                        false, name, m_sheet.valueSource(owner), used});
     }
     m_variables->setEntries(entries);
 }

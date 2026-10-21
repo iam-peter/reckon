@@ -437,6 +437,97 @@ QList<Assignment> leadingAssignments(const QString &source)
 
 } // namespace
 
+namespace {
+
+// The identifier tokens of a source that refer to something.
+QList<Token> referenceTokens(const QString &source)
+{
+    QList<Token> tokens;
+    try {
+        tokens = tokenize(source);
+    } catch (const CalcError &) {
+        return {};
+    }
+    auto type = [&tokens](qsizetype i) { return tokens[qMin(i, tokens.size() - 1)].type; };
+    qsizetype i = 0;
+    QStringList parameters;
+    // f(a, b) = body: the body, without a and b.
+    if (type(0) == Token::Identifier && type(1) == Token::LeftParen) {
+        qsizetype k = 2;
+        QStringList names;
+        while (type(k) == Token::Identifier) {
+            names.append(tokens[k].text);
+            ++k;
+            if (type(k) != Token::Comma)
+                break;
+            ++k;
+        }
+        if (k > 2 && type(k) == Token::RightParen && type(k + 1) == Token::Assign) {
+            i = k + 2;
+            parameters = names;
+        }
+    }
+    // a = b = expr: the expression.
+    if (i == 0) {
+        while (type(i) == Token::Identifier && type(i + 1) == Token::Assign)
+            i += 2;
+    }
+    QList<Token> references;
+    for (; i < tokens.size(); ++i) {
+        if (tokens[i].type == Token::Identifier && !parameters.contains(tokens[i].text))
+            references.append(tokens[i]);
+    }
+    return references;
+}
+
+bool isWordChar(QChar c)
+{
+    return c.isLetterOrNumber() || c == u'_' || c == u'.' || c == u'$';
+}
+
+// Whether a number between `before` and `after`, the nearest characters
+// that are not spaces, would run into them: 2x, x y, x(2) and (1)x are a
+// multiplication only while the name stays a name.
+bool runsInto(QChar before, QChar after)
+{
+    return isWordChar(before) || before == u')' || isWordChar(after) || after == u'(';
+}
+
+} // namespace
+
+QSet<QString> Worksheet::referencedNames(const QString &source)
+{
+    QSet<QString> names;
+    for (const Token &token : referenceTokens(source))
+        names.insert(token.text);
+    return names;
+}
+
+QString Worksheet::replaceReferences(const QString &source, const QString &name, const QString &text)
+{
+    QString result = source;
+    const QList<Token> tokens = referenceTokens(source);
+    for (auto token = tokens.crbegin(); token != tokens.crend(); ++token) {
+        if (token->text != name)
+            continue;
+        const int start = token->position;
+        const int end = start + token->length;
+        int previous = start - 1;
+        while (previous >= 0 && result[previous].isSpace())
+            --previous;
+        int next = end;
+        while (next < result.size() && result[next].isSpace())
+            ++next;
+        // 2x would become 25 and x y two numbers in a row: those get (5),
+        // and so does a negative number, which ^ and ! would take apart.
+        const bool parenthesize = text.startsWith(u'-')
+            || runsInto(previous >= 0 ? result[previous] : QChar(u' '),
+                        next < result.size() ? result[next] : QChar(u' '));
+        result.replace(start, end - start, parenthesize ? u'(' + text + u')' : text);
+    }
+    return result;
+}
+
 QString Worksheet::valueSource(int index) const
 {
     const QString &source = m_entries[index].source;

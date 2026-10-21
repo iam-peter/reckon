@@ -45,6 +45,25 @@ ColumnLayout {
         }
         AppSettings.graph.curves = list
         graph.curves = list
+        pane.calculator.setCurveExpressions(list.map(curve => curve.expression))
+    }
+
+    // A variable a curve used went: the curve says its last value instead.
+    Connections {
+        target: pane.calculator
+        function onVariableRemoved(name: string, value: string) {
+            let changed = false
+            for (let i = 0; i < curves.count; ++i) {
+                const expression = curves.get(i).expression
+                const replaced = pane.calculator.replaceInCurve(expression, name, value)
+                if (replaced !== expression) {
+                    curves.setProperty(i, "expression", replaced)
+                    changed = true
+                }
+            }
+            if (changed)
+                pane.store()
+        }
     }
 
     function addCurve(expression: string, color: string) {

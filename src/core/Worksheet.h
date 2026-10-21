@@ -74,6 +74,13 @@ public:
     // The entry's source without `name` among the names it assigns:
     // "x = a * 2" becomes "a * 2", "x = y = 2" without y "x = 2".
     QString sourceWithout(int index, const QString &name) const;
+    // The names a source refers to, each once: not those it assigns at its
+    // start, nor in a definition the parameters, which hide a variable.
+    static QSet<QString> referencedNames(const QString &source);
+    // The source with every reference to `name` written as `text`, in
+    // parentheses where it would otherwise run into what is next to it.
+    static QString replaceReferences(const QString &source, const QString &name, const QString &text);
+
     // The indexes of the entries assigning or defining `name`.
     QList<int> definersOf(const QString &name) const;
 

@@ -429,6 +429,58 @@ private slots:
         QCOMPARE(calc->history()->resultAt(0), u"6"_s);
         QTRY_VERIFY(!variableEditor());
 
+        // The plus adds one, as an entry binding it.
+        auto findItem = [window](const QString &objectName, const QString &rowName = {}) -> QQuickItem * {
+            for (QQuickItem *item : itemsUnder(window->contentItem())) {
+                if (item->objectName() != objectName || !item->isVisible())
+                    continue;
+                if (rowName.isEmpty())
+                    return item;
+                for (QQuickItem *parent = item; parent; parent = parent->parentItem()) {
+                    if (parent->property("name").toString() == rowName && parent->property("editText").isValid())
+                        return item;
+                }
+            }
+            return nullptr;
+        };
+        auto click = [window](QQuickItem *item) {
+            QTest::mouseClick(window, Qt::LeftButton, {}, item->mapToScene({item->width() / 2, item->height() / 2}).toPoint());
+        };
+        const int rows = calc->history()->count();
+        QQuickItem *addButton = findItem(u"addVariable"_s);
+        QVERIFY(addButton);
+        click(addButton);
+        QTRY_VERIFY(findItem(u"variableAdder"_s));
+        QTRY_VERIFY(findItem(u"variableAdder"_s)->hasActiveFocus());
+        type(window, u"rate = 3"_s);
+        QTest::keyClick(window, Qt::Key_Return);
+        QTRY_COMPARE(calc->history()->count(), rows + 1);
+        QCOMPARE(calc->history()->expressionAt(rows), u"rate = 3"_s);
+        QTRY_VERIFY(!findItem(u"variableAdder"_s));
+        // Its badge counts where it is used.
+        QVERIFY(!findItem(u"referenceCount"_s, u"rate"_s));
+        editor->setProperty("text", QString());
+        QTRY_VERIFY(editor->property("inputFocused").toBool());
+        type(window, u"rate * 2"_s);
+        QTest::keyClick(window, Qt::Key_Return);
+        QVERIFY(QMetaObject::invokeMethod(graphPane, "addCurve", Q_ARG(QString, u"rate x"_s), Q_ARG(QString, QString())));
+        QTRY_VERIFY(findItem(u"referenceCount"_s, u"rate"_s));
+        QCOMPARE(findItem(u"referenceCount"_s, u"rate"_s)->property("text").toString(), u"2"_s);
+        // Removing it leaves its value wherever it was used.
+        QQuickItem *removeButton = findItem(u"removeName"_s, u"rate"_s);
+        QVERIFY(removeButton);
+        click(removeButton);
+        QTRY_VERIFY(!calc->isVariable(u"rate"_s));
+        QCOMPARE(calc->history()->expressionAt(rows), u"3"_s);
+        QCOMPARE(calc->history()->expressionAt(rows + 1), u"3 * 2"_s);
+        QCOMPARE(calc->history()->resultAt(rows + 1), u"6"_s);
+        const QVariantList curves = graph->property("curves").toList();
+        QCOMPARE(curves.last().toMap().value(u"expression"_s).toString(), u"(3) x"_s);
+        // Removing the variable x leaves the curves' own x alone.
+        calc->removeVariable(u"x"_s);
+        QTRY_VERIFY(!calc->isVariable(u"x"_s));
+        QCOMPARE(graph->property("curves").toList(), curves);
+
         window->close();
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.isEmpty() ? QString() : warnings.first().toString()));
     }

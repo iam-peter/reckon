@@ -50,9 +50,11 @@ The side panel (Ctrl+P) has the variables, the built-in functions, a
 table of constants, the history and your own functions, each with a
 search box. It serves all three tabs: a click inserts the name into the
 current tab's input, the expression line, the curve typed in last, or
-the script at its cursor. Variables can be edited there with the pencil,
-Enter applying the new expression and an error leaving the variable as
-it was, and removed with the cross, as can your functions. The keypad
+the script at its cursor. The variables tab manages them: the plus adds
+one from `name = expression`, the pencil edits one, Enter applying the
+new expression and an error leaving it as it was, and the cross removes
+one, as it does your functions. A badge next to a variable counts the
+entries, functions and graph curves using it. The keypad
 (Ctrl+K), part of the Calculator tab, has the digits, operators and
 common functions for clicking.
 
@@ -81,9 +83,11 @@ copying a number, and `f(x) = x * k` reads `k` whenever it runs.
   keeps its value until something it reads changes. Entries using
   trigonometry follow the angle unit.
 - Variables and functions an entry defines say so in the side panel.
-  Editing such a variable there edits its entry; removing it takes the
-  assignment out of every entry making it, which keep their results, and
-  removing such a function removes its definitions. Clearing the history
+  Adding a variable there adds an entry binding it, and editing one edits
+  its entry. Removing one takes the assignment out of every entry making
+  it, and everything using it, entries, functions and curves, gets its
+  last value written in instead, so `y = x * 2` becomes `y = 5 * 2` and
+  keeps its result. Removing such a function removes its definitions. Clearing the history
   keeps their last values as plain variables and functions.
 
 ### Expressions

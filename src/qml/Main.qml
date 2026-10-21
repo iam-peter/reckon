@@ -276,6 +276,7 @@ ApplicationWindow {
             currentIndex: AppSettings.view.sideTab
             onCurrentIndexChanged: AppSettings.view.sideTab = currentIndex
             onInsertRequested: text => root.insert(text)
+            onEditingFinished: root.focusPage()
         }
 
         // The three views, one tab each, beside the side panel they share.

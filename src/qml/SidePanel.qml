@@ -17,6 +17,7 @@ ColumnLayout {
     property alias currentIndex: tabs.currentIndex
 
     signal insertRequested(string text)
+    signal editingFinished()
 
     spacing: 0
 
@@ -59,6 +60,8 @@ ColumnLayout {
             uiFont: panel.uiFont
             removable: true
             editHandler: (name, text) => panel.calculator.setVariable(name, text)
+            addHandler: text => panel.calculator.addVariable(text)
+            onEditingFinished: panel.editingFinished()
             placeholder: qsTr("Search variables")
             onInsertRequested: text => panel.insertRequested(text)
             onRemoveRequested: name => panel.calculator.removeVariable(name)
