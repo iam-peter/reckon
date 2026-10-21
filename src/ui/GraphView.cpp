@@ -16,12 +16,15 @@ using namespace Qt::StringLiterals;
 
 namespace {
 
-// 1, 2 or 5 times a power of ten, so that `range` holds about `count` steps.
-qreal niceStep(qreal range, int count)
+// Ticks are about this far apart, in pixels.
+constexpr qreal XTickSpacing = 70;
+constexpr qreal YTickSpacing = 50;
+
+// The step nearest `rough` that is 1, 2 or 5 times a power of ten.
+qreal niceStep(qreal rough)
 {
-    if (range <= 0 || count <= 0)
+    if (!(rough > 0) || !std::isfinite(rough))
         return 1;
-    const qreal rough = range / count;
     const qreal power = std::pow(10.0, std::floor(std::log10(rough)));
     const qreal normalized = rough / power;
     if (normalized < 1.5)
@@ -204,10 +207,23 @@ void GraphView::paint(QPainter *painter)
         paintHover(painter);
 }
 
+// From the scale alone, units per pixel, and not from how many ticks the
+// width holds: resizing keeps the scale, so it shows more or fewer ticks
+// at the same spacing, and only zooming changes the spacing.
+qreal GraphView::xStep() const
+{
+    return width() > 0 ? niceStep((m_xMax - m_xMin) / width() * XTickSpacing) : 1;
+}
+
+qreal GraphView::yStep() const
+{
+    return height() > 0 ? niceStep((m_yMax - m_yMin) / height() * YTickSpacing) : 1;
+}
+
 void GraphView::paintGrid(QPainter *painter)
 {
-    const qreal xStep = niceStep(m_xMax - m_xMin, int(width() / 70));
-    const qreal yStep = niceStep(m_yMax - m_yMin, int(height() / 50));
+    const qreal xStep = this->xStep();
+    const qreal yStep = this->yStep();
     const QFontMetricsF metrics(m_font);
     const bool xAxisVisible = m_yMin <= 0 && m_yMax >= 0;
     const bool yAxisVisible = m_xMin <= 0 && m_xMax >= 0;

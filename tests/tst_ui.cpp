@@ -4,6 +4,7 @@
 #include "core/Calculator.h"
 #include "core/ScriptLibrary.h"
 #include "ui/Fonts.h"
+#include "ui/GraphView.h"
 
 #include <QDir>
 #include <QGuiApplication>
@@ -66,6 +67,33 @@ private slots:
         settings.setValue(u"view/script"_s, true);
         settings.setValue(u"view/keypad"_s, true);
         settings.setValue(u"view/sidePanel"_s, true);
+    }
+
+    void graphTicksFollowTheScale()
+    {
+        GraphView graph;
+        graph.setSize({460, 300});
+        graph.resetView();
+        QCOMPARE(graph.xStep(), 2.0);
+        QCOMPARE(graph.yStep(), 2.0);
+        // Resizing keeps the scale, and with it the spacing. Counting the
+        // ticks the width holds instead flipped it to 5 at 419 pixels.
+        for (int width = 200; width <= 1200; width += 3) {
+            graph.setSize({qreal(width), qreal(150 + width / 3)});
+            QCOMPARE(graph.xStep(), 2.0);
+            QCOMPARE(graph.yStep(), 2.0);
+        }
+        graph.setSize({419, 300});
+        QCOMPARE(graph.xStep(), 2.0);
+        // Zooming changes it, through 1, 2 and 5 times powers of ten.
+        graph.zoomOut();
+        QCOMPARE(graph.xStep(), 5.0);
+        for (int i = 0; i < 5; ++i)
+            graph.zoomIn();
+        QCOMPARE(graph.xStep(), 1.0);
+        graph.setRange(0, 0.05, 0, 1000);
+        QCOMPARE(graph.xStep(), 0.01);
+        QCOMPARE(graph.yStep(), 200.0);
     }
 
     void loadsWithoutWarnings()

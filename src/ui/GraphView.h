@@ -27,6 +27,9 @@ class GraphView : public QQuickPaintedItem
     Q_PROPERTY(qreal xMax READ xMax NOTIFY rangeChanged)
     Q_PROPERTY(qreal yMin READ yMin NOTIFY rangeChanged)
     Q_PROPERTY(qreal yMax READ yMax NOTIFY rangeChanged)
+    // The distance between ticks, in units: 1, 2 or 5 times a power of ten.
+    Q_PROPERTY(qreal xStep READ xStep NOTIFY rangeChanged)
+    Q_PROPERTY(qreal yStep READ yStep NOTIFY rangeChanged)
     Q_PROPERTY(bool showGrid MEMBER m_showGrid NOTIFY styleChanged)
     Q_PROPERTY(QColor backgroundColor MEMBER m_backgroundColor NOTIFY styleChanged)
     Q_PROPERTY(QColor gridColor MEMBER m_gridColor NOTIFY styleChanged)
@@ -49,6 +52,8 @@ public:
     qreal xMax() const { return m_xMax; }
     qreal yMin() const { return m_yMin; }
     qreal yMax() const { return m_yMax; }
+    qreal xStep() const;
+    qreal yStep() const;
     QStringList errors() const { return m_errors; }
     bool hovering() const { return m_hovering; }
     qreal hoverX() const { return m_hoverX; }
