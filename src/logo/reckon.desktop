@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Reckon
+GenericName=Calculator
+Comment=Expressions with a history, variables, graphs and scripts
+Exec=reckon
+Icon=reckon
+Terminal=false
+Categories=Utility;Calculator;Science;Math;
+StartupWMClass=reckon

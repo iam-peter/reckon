@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reckon</title>
+<meta name="description" content="A calculator with a history, variables and your own functions, graphs of y = f(x), and JavaScript against the calculator.">
+<link rel="icon" href="reckon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #f6f8fc;
+    --fg: #141a28;
+    --muted: #5a6478;
+    --card: #ffffff;
+    --border: #dbe1ec;
+    --code-bg: #0f1424;
+    --code-fg: #dde6ff;
+    --accent: #2f6ff2;
+    --accent-strong: #2f6ff2;
+    --gradient: linear-gradient(135deg, #5ee0ff 0%, #2f6ff2 55%, #5a2bd9 100%);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c1018;
+      --fg: #e4e9f4;
+      --muted: #94a0b8;
+      --card: #131a28;
+      --border: #243049;
+      --code-bg: #070a12;
+      --accent: #7fb0ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  }
+  a { color: var(--accent); }
+  main { max-width: 920px; margin: 0 auto; padding: 0 16px 64px; }
+
+  header { text-align: center; padding: 64px 0 40px; }
+  header img { width: 112px; height: 112px; filter: drop-shadow(0 10px 24px rgb(47 111 242 / 0.3)); }
+  h1 { font-size: 3rem; margin: 16px 0 4px; letter-spacing: -0.02em; }
+  .tagline { color: var(--muted); font-size: 1.15rem; max-width: 620px; margin: 0 auto 28px; }
+
+  .buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .button {
+    display: inline-block; padding: 10px 20px; border-radius: 10px;
+    font-weight: 600; text-decoration: none; border: 1px solid var(--border);
+    color: var(--fg); background: var(--card);
+  }
+  .button.primary { background: var(--gradient); color: #fff; border-color: transparent; }
+  .button:hover { filter: brightness(1.06); }
+
+  .shot {
+    display: block; width: 100%; height: auto; margin: 8px 0 48px;
+    border-radius: 12px; border: 1px solid var(--border);
+    box-shadow: 0 20px 50px rgb(0 0 0 / 0.12);
+  }
+
+  h2 { font-size: 1.5rem; margin: 40px 0 8px; }
+  p { margin: 8px 0; }
+  .note { color: var(--muted); font-size: 0.95rem; }
+
+  .code-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0 8px; }
+  .channels { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .code-head button {
+    font: inherit; font-size: 0.95rem; padding: 6px 16px; border: 0; cursor: pointer;
+    background: var(--card); color: var(--muted);
+  }
+  .channels button[aria-pressed="true"] { background: var(--accent-strong); color: #fff; }
+  .copy { border: 1px solid var(--border) !important; border-radius: 8px; color: var(--fg) !important; }
+
+  .code { background: var(--code-bg); color: var(--code-fg); border-radius: 10px; }
+  .code pre { margin: 0; padding: 14px 16px; overflow-x: auto; font: 13.5px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
+  ul.features { padding-left: 20px; }
+  ul.features li { margin: 6px 0; }
+  footer { text-align: center; color: var(--muted); font-size: 0.9rem; padding-top: 48px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="reckon.svg" alt="">
+    <h1>Reckon</h1>
+    <p class="tagline">A calculator in the spirit of SpeedCrunch: expressions into a
+      history, variables and your own functions, graphs of y = f(x), and
+      JavaScript against the calculator.</p>
+    <div class="buttons">
+      <a class="button primary" href="https://github.com/iam-peter/reckon/releases/latest">Download</a>
+      <a class="button" href="https://github.com/iam-peter/reckon/releases/tag/nightly">Nightly</a>
+      <a class="button" href="https://github.com/iam-peter/reckon">Source on GitHub</a>
+    </div>
+  </header>
+
+  <img class="shot" src="main.png" width="1100" height="720"
+       alt="Reckon with a few expressions evaluated, a curve plotted and a script">
+
+  <h2>What it does</h2>
+  <ul class="features">
+    <li>Type expressions, get results in a history; click any of them to use it again.</li>
+    <li>Variables, <code>f(x) = …</code> functions, <code>ans</code>, and sessions that come back when Reckon starts.</li>
+    <li>Results as general, fixed, scientific, engineering, binary, octal or hexadecimal numbers, at the precision you pick.</li>
+    <li>Colors in the expression, the result while you type, and completion of function and variable names.</li>
+    <li>Graphs of <code>y = f(x)</code> curves that follow the calculator&rsquo;s variables: pan, zoom, read values off the plot.</li>
+    <li>JavaScript scripts that evaluate expressions, define functions the calculator can call, and plot.</li>
+  </ul>
+
+  <h2>Debian and Ubuntu</h2>
+  <p>The APT repository brings Reckon with its own Qt.</p>
+  <div class="code-head">
+    <div class="channels" role="group" aria-label="Channel">
+      <button type="button" data-channel="stable" aria-pressed="true">Stable</button>
+      <button type="button" data-channel="nightly" aria-pressed="false">Nightly</button>
+    </div>
+    <button type="button" class="copy" data-copy="apt">Copy</button>
+  </div>
+  <div class="code"><pre id="apt">sudo curl -fsSLo /usr/share/keyrings/reckon-archive-keyring.asc https://iam-peter.github.io/reckon/key.asc
+echo "deb [signed-by=/usr/share/keyrings/reckon-archive-keyring.asc] https://iam-peter.github.io/reckon/apt <span id="channel">stable</span> main" | sudo tee /etc/apt/sources.list.d/reckon.list
+sudo apt update &amp;&amp; sudo apt install reckon</pre></div>
+
+  <h2>Other systems</h2>
+  <p>Each <a href="https://github.com/iam-peter/reckon/releases/latest">release</a> has an
+    AppImage for any Linux, a zip for Windows and a disk image for macOS.
+    The macOS app isn't signed: open it with a right click and Open the first time.</p>
+
+  <footer>
+    <a href="https://github.com/iam-peter/reckon">github.com/iam-peter/reckon</a>
+  </footer>
+</main>
+<script>
+  for (const button of document.querySelectorAll(".channels button")) {
+    button.addEventListener("click", () => {
+      for (const other of document.querySelectorAll(".channels button"))
+        other.setAttribute("aria-pressed", String(other === button));
+      document.getElementById("channel").textContent = button.dataset.channel;
+    });
+  }
+  for (const button of document.querySelectorAll("[data-copy]")) {
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(document.getElementById(button.dataset.copy).textContent);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Select and copy";
+      }
+      setTimeout(() => { button.textContent = "Copy"; }, 1500);
+    });
+  }
+</script>
+</body>
+</html>
