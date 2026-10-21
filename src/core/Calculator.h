@@ -82,6 +82,11 @@ public:
     Q_INVOKABLE bool isFunction(const QString &name) const { return m_env.isFunction(name); }
     Q_INVOKABLE bool isVariable(const QString &name) const { return m_env.hasVariable(name); }
 
+    // Gives a variable a new expression. One an entry defines changes that
+    // entry, and whatever depends on it follows; the environment's own
+    // takes the value the expression has now. The error, empty when it
+    // worked, in which case nothing changed.
+    Q_INVOKABLE QString setVariable(const QString &name, const QString &expression);
     Q_INVOKABLE void removeVariable(const QString &name);
     Q_INVOKABLE void clearVariables();
     Q_INVOKABLE void removeUserFunction(const QString &name);
@@ -117,6 +122,8 @@ private:
     void refreshUserFunctions();
     void refreshFunctions();
     void setSessionFile(const QString &file);
+    void unbindVariable(const QString &name);
+    void unbindFunction(const QString &name);
     // Records the error, if any, and says the calculator changed.
     void finish(const QString &error);
     // The history model follows the worksheet.

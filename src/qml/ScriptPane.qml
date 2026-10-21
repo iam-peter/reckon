@@ -9,7 +9,7 @@ import Reckon.Core
 // JavaScript against the calculator: a library of scripts kept as files,
 // an editor for the current one, and what running it gave: the curves it
 // plotted, in a graph of their own that each run starts afresh, and the
-// output. The curves can go to the Graph pane from there.
+// output. The curves can go to the Graph tab from there.
 ColumnLayout {
     id: pane
 
@@ -28,7 +28,7 @@ ColumnLayout {
         visible: true,
     }))
 
-    // The copy button: these curves should go to the Graph pane.
+    // The copy button: these curves should go to the Graph tab.
     signal copyToGraphRequested(var curves)
 
     spacing: 4
@@ -48,7 +48,7 @@ ColumnLayout {
 //   calc.format(1 / 3)           formats a number like a result
 //   calc.history()               the expressions and results so far
 // print(...) writes to the output. Each run starts with no curves; the
-// chart button copies them to the Graph pane. A script named "startup" runs when
+// chart button copies them to the Graph tab. A script named "startup" runs when
 // Reckon starts, a good place for functions used often.
 
 calc.define("cube", x => x * x * x)
@@ -83,6 +83,19 @@ calc.plot("sin(x) * 4", "#1b7ced")
     function run() {
         flush()
         pane.calculator.script.run(shown ? editor.text : library.read(current), current)
+    }
+
+    // Names from the side panel go where the cursor is.
+    function insert(text: string) {
+        if (editor.readOnly)
+            return
+        editor.remove(editor.selectionStart, editor.selectionEnd)
+        editor.insert(editor.cursorPosition, text)
+        editor.forceActiveFocus()
+    }
+
+    function focusEditor() {
+        editor.forceActiveFocus()
     }
 
     function create() {
@@ -242,7 +255,7 @@ calc.plot("sin(x) * 4", "#1b7ced")
                 IconButton {
                     objectName: "copyToGraph"
                     iconName: "chart-line"
-                    tip: qsTr("Copy the curves to the Graph pane")
+                    tip: qsTr("Copy the curves to the Graph tab")
                     onClicked: pane.copyToGraphRequested(pane.curves)
                 }
             }

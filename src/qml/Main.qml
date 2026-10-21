@@ -69,8 +69,29 @@ ApplicationWindow {
         calc.evaluate(expression)
     }
 
+    // The tabs, in order.
+    enum Page { CalculatorPage, GraphPage, ScriptPage }
+
+    // Names from the side panel, the keypad aside, go into the current
+    // tab's input: the expression line, a curve or the script.
     function insert(text: string) {
-        editor.insert(text)
+        if (pages.currentIndex === Main.GraphPage)
+            graphPane.insert(text)
+        else if (pages.currentIndex === Main.ScriptPage)
+            scriptPane.insert(text)
+        else
+            editor.insert(text)
+    }
+
+    function showPage(page: int) {
+        pages.currentIndex = page
+    }
+
+    function focusPage() {
+        if (pages.currentIndex === Main.CalculatorPage)
+            editor.focusInput()
+        else if (pages.currentIndex === Main.ScriptPage)
+            scriptPane.focusEditor()
     }
 
     menuBar: MenuBar {
@@ -101,7 +122,7 @@ ApplicationWindow {
                 enabled: calc.history.count > 0
                 onTriggered: Clipboard.setText(calc.history.expressionAt(calc.history.count - 1))
             }
-            Action { text: qsTr("&Paste"); shortcut: StandardKey.Paste; onTriggered: editor.insert(Clipboard.text()) }
+            Action { text: qsTr("&Paste"); shortcut: StandardKey.Paste; onTriggered: root.insert(Clipboard.text()) }
             MenuSeparator {}
             Action { text: qsTr("Clear &History"); onTriggered: calc.clearHistory() }
             Action { text: qsTr("Wipe &Variables"); onTriggered: calc.clearVariables() }
@@ -109,12 +130,44 @@ ApplicationWindow {
         }
         Menu {
             title: qsTr("&View")
+            // One tab shows at a time; these pick it.
+            ActionGroup { id: pageActions }
+            Action {
+                text: qsTr("&Calculator")
+                shortcut: "Ctrl+L"
+                checkable: true
+                checked: pages.currentIndex === Main.CalculatorPage
+                ActionGroup.group: pageActions
+                onTriggered: root.showPage(Main.CalculatorPage)
+            }
+            Action {
+                text: qsTr("&Graph")
+                shortcut: "Ctrl+G"
+                checkable: true
+                checked: pages.currentIndex === Main.GraphPage
+                ActionGroup.group: pageActions
+                onTriggered: root.showPage(Main.GraphPage)
+            }
+            Action {
+                text: qsTr("&Script")
+                shortcut: "Ctrl+J"
+                checkable: true
+                checked: pages.currentIndex === Main.ScriptPage
+                ActionGroup.group: pageActions
+                onTriggered: root.showPage(Main.ScriptPage)
+            }
+            MenuSeparator {}
             Action {
                 text: qsTr("&Keypad")
                 shortcut: "Ctrl+K"
                 checkable: true
                 checked: AppSettings.view.keypad
-                onTriggered: AppSettings.view.keypad = checked
+                onTriggered: {
+                    AppSettings.view.keypad = checked
+                    // It belongs to the calculator.
+                    if (checked)
+                        root.showPage(Main.CalculatorPage)
+                }
             }
             Action {
                 text: qsTr("Side &Panel")
@@ -129,29 +182,6 @@ ApplicationWindow {
             Action { text: qsTr("&Constants"); shortcut: "Ctrl+3"; onTriggered: root.showSideTab(2) }
             Action { text: qsTr("&History"); shortcut: "Ctrl+4"; onTriggered: root.showSideTab(3) }
             Action { text: qsTr("&User Functions"); shortcut: "Ctrl+5"; onTriggered: root.showSideTab(4) }
-            MenuSeparator {}
-            Action {
-                text: qsTr("&Graph")
-                shortcut: "Ctrl+G"
-                checkable: true
-                checked: AppSettings.view.graph
-                onTriggered: {
-                    AppSettings.view.graph = checked
-                    if (checked)
-                        AppSettings.view.toolTab = 0
-                }
-            }
-            Action {
-                text: qsTr("&Script")
-                shortcut: "Ctrl+J"
-                checkable: true
-                checked: AppSettings.view.script
-                onTriggered: {
-                    AppSettings.view.script = checked
-                    if (checked)
-                        AppSettings.view.toolTab = 1
-                }
-            }
             MenuSeparator {}
             Action {
                 text: qsTr("F&ull Screen")
@@ -248,108 +278,102 @@ ApplicationWindow {
             onInsertRequested: text => root.insert(text)
         }
 
+        // The three views, one tab each, beside the side panel they share.
         ColumnLayout {
             SplitView.fillWidth: true
             SplitView.minimumWidth: 300
-            spacing: 4
-
-            Display {
-                id: display
-                objectName: "display"
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                calculator: calc
-                monoFont: root.monoFont
-                resultFont: root.resultFont
-                onInsertRequested: text => root.insert(text)
-                onEditingFinished: editor.focusInput()
-                // Clicks on the display leave the editor in charge, unless
-                // they edit an entry in place.
-                TapHandler {
-                    onTapped: {
-                        if (!display.editing)
-                            editor.focusInput()
-                    }
-                }
-            }
-
-            Label {
-                id: preview
-                objectName: "preview"
-                Layout.fillWidth: true
-                Layout.rightMargin: 10
-                visible: AppSettings.calculator.autoCalc && text !== ""
-                text: AppSettings.calculator.autoCalc ? calc.preview(editor.text) : ""
-                font: root.monoFont
-                color: Theme.preview
-                horizontalAlignment: Text.AlignRight
-                elide: Text.ElideLeft
-                // Follows the variables too, which change on each evaluation.
-                Connections {
-                    target: calc
-                    function onEvaluated() { preview.text = Qt.binding(() => AppSettings.calculator.autoCalc ? calc.preview(editor.text) : "") }
-                    function onFormatChanged() { preview.text = Qt.binding(() => AppSettings.calculator.autoCalc ? calc.preview(editor.text) : "") }
-                }
-            }
-
-            Editor {
-                id: editor
-                objectName: "editor"
-                Layout.fillWidth: true
-                Layout.leftMargin: 6
-                Layout.rightMargin: 6
-                calculator: calc
-                font: root.monoFont
-                autoComplete: AppSettings.calculator.autoComplete
-                highlight: AppSettings.calculator.highlight
-                onAccepted: expression => root.evaluate(expression)
-            }
-
-            Keypad {
-                id: keypad
-                objectName: "keypad"
-                Layout.fillWidth: true
-                Layout.leftMargin: 6
-                Layout.rightMargin: 6
-                Layout.bottomMargin: 6
-                visible: AppSettings.view.keypad
-                onInsertRequested: text => editor.insert(text)
-                onEvaluateRequested: editor.submit()
-                onBackspaceRequested: editor.backspace()
-                onClearRequested: editor.clear()
-            }
-        }
-
-        ColumnLayout {
-            id: toolPane
-            visible: AppSettings.view.graph || AppSettings.view.script
-            SplitView.preferredWidth: AppSettings.view.toolWidth
-            SplitView.minimumWidth: 260
-            onWidthChanged: if (visible && SplitView.view.resizing) AppSettings.view.toolWidth = width
             spacing: 0
 
             TabBar {
-                id: toolTabs
-                objectName: "toolTabs"
+                id: pages
+                objectName: "pages"
                 Layout.fillWidth: true
-                currentIndex: AppSettings.view.toolTab
-                onCurrentIndexChanged: AppSettings.view.toolTab = currentIndex
-                TabButton {
-                    text: qsTr("Graph")
-                    enabled: AppSettings.view.graph
-                    focusPolicy: Qt.NoFocus
+                currentIndex: AppSettings.view.page
+                onCurrentIndexChanged: {
+                    AppSettings.view.page = currentIndex
+                    root.focusPage()
                 }
-                TabButton {
-                    text: qsTr("Script")
-                    enabled: AppSettings.view.script
-                    focusPolicy: Qt.NoFocus
-                }
+                TabButton { text: qsTr("Calculator"); focusPolicy: Qt.NoFocus }
+                TabButton { text: qsTr("Graph"); focusPolicy: Qt.NoFocus }
+                TabButton { text: qsTr("Script"); focusPolicy: Qt.NoFocus }
             }
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.topMargin: 4
-                currentIndex: toolTabs.currentIndex
+                currentIndex: pages.currentIndex
+
+                ColumnLayout {
+                    id: calculatorPage
+                    objectName: "calculatorPage"
+                    spacing: 4
+
+                    Display {
+                        id: display
+                        objectName: "display"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        calculator: calc
+                        monoFont: root.monoFont
+                        resultFont: root.resultFont
+                        onInsertRequested: text => root.insert(text)
+                        onEditingFinished: editor.focusInput()
+                        // Clicks on the display leave the editor in charge, unless
+                        // they edit an entry in place.
+                        TapHandler {
+                            onTapped: {
+                                if (!display.editing)
+                                    editor.focusInput()
+                            }
+                        }
+                    }
+
+                    Label {
+                        id: preview
+                        objectName: "preview"
+                        Layout.fillWidth: true
+                        Layout.rightMargin: 10
+                        visible: AppSettings.calculator.autoCalc && text !== ""
+                        text: AppSettings.calculator.autoCalc ? calc.preview(editor.text) : ""
+                        font: root.monoFont
+                        color: Theme.preview
+                        horizontalAlignment: Text.AlignRight
+                        elide: Text.ElideLeft
+                        // Follows the variables too, which change on each evaluation.
+                        Connections {
+                            target: calc
+                            function onEvaluated() { preview.text = Qt.binding(() => AppSettings.calculator.autoCalc ? calc.preview(editor.text) : "") }
+                            function onFormatChanged() { preview.text = Qt.binding(() => AppSettings.calculator.autoCalc ? calc.preview(editor.text) : "") }
+                        }
+                    }
+
+                    Editor {
+                        id: editor
+                        objectName: "editor"
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 6
+                        Layout.rightMargin: 6
+                        calculator: calc
+                        font: root.monoFont
+                        autoComplete: AppSettings.calculator.autoComplete
+                        highlight: AppSettings.calculator.highlight
+                        onAccepted: expression => root.evaluate(expression)
+                    }
+
+                    Keypad {
+                        id: keypad
+                        objectName: "keypad"
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 6
+                        Layout.rightMargin: 6
+                        Layout.bottomMargin: 6
+                        visible: AppSettings.view.keypad
+                        onInsertRequested: text => editor.insert(text)
+                        onEvaluateRequested: editor.submit()
+                        onBackspaceRequested: editor.backspace()
+                        onClearRequested: editor.clear()
+                    }
+                }
 
                 GraphPane {
                     id: graphPane
@@ -365,14 +389,13 @@ ApplicationWindow {
                     monoFont: root.monoFont
                     uiFont: root.uiFont
                     scriptDirectory: root.scriptDirectory
-                    // The curves join the Graph pane's; the script stays in view.
+                    // The curves join the Graph tab's; the script stays in view.
                     onCopyToGraphRequested: curves => {
                         for (const curve of curves)
                             graphPane.addCurve(curve.expression, curve.color)
-                        AppSettings.view.graph = true
                         statusMessage.text = curves.length === 1
-                            ? qsTr("Copied a curve to the Graph pane")
-                            : qsTr("Copied %1 curves to the Graph pane").arg(curves.length)
+                            ? qsTr("Copied a curve to the Graph tab")
+                            : qsTr("Copied %1 curves to the Graph tab").arg(curves.length)
                     }
                 }
             }

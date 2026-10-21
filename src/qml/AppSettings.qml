@@ -26,11 +26,8 @@ QtObject {
         property bool keypad: false
         property bool sidePanel: true
         property int sideTab: 0
-        property bool graph: false
-        property bool script: false
-        property int toolTab: 0
+        property int page: 0 // the tab: calculator, graph, script
         property real sideWidth: 260
-        property real toolWidth: 460
     }
 
     readonly property Settings fonts: Settings {
@@ -59,7 +56,7 @@ QtObject {
     readonly property Settings window: Settings {
         category: "window"
 
-        property int width: 1100
+        property int width: 900
         property int height: 720
     }
 }

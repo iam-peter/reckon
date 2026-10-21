@@ -269,12 +269,32 @@ QVariantList Calculator::completions(const QString &prefix) const
     return list;
 }
 
-// Removing and clearing touch the environment's own variables and
-// functions; the ones the history defines go with their entries.
+// A variable an entry defines goes from every entry assigning it, which
+// keep their expressions: "x = a * 2" becomes "a * 2", so the entry and
+// its $n stay. A function an entry defines goes with its definitions.
+void Calculator::unbindVariable(const QString &name)
+{
+    for (int index : m_sheet.definersOf(name)) {
+        if (!m_sheet.entries()[index].definesFunction)
+            m_sheet.edit(index, m_sheet.sourceWithout(index, name));
+    }
+}
+
+void Calculator::unbindFunction(const QString &name)
+{
+    const QList<int> definers = m_sheet.definersOf(name);
+    for (auto index = definers.crbegin(); index != definers.crend(); ++index) {
+        if (m_sheet.entries()[*index].definesFunction)
+            m_sheet.remove(*index);
+    }
+}
+
 void Calculator::removeVariable(const QString &name)
 {
-    if (name == u"ans"_s || m_sheet.owns(name) || m_sheet.isEvaluating())
+    if (name == u"ans"_s || isResultName(name) || m_sheet.isEvaluating())
         return;
+    if (m_sheet.ownerIndex(name) >= 0 && !m_sheet.isFunction(name))
+        unbindVariable(name);
     m_env.removeVariable(name);
     namesChanged({name});
 }
@@ -283,7 +303,11 @@ void Calculator::clearVariables()
 {
     if (m_sheet.isEvaluating())
         return;
-    const QStringList names = m_env.variables().keys();
+    QStringList names = m_env.variables().keys();
+    for (const QString &name : m_sheet.variableNames()) {
+        unbindVariable(name);
+        names.append(name);
+    }
     m_env.clearVariables();
     m_env.setVariable(u"ans"_s, 0);
     namesChanged(QSet<QString>(names.cbegin(), names.cend()));
@@ -291,8 +315,10 @@ void Calculator::clearVariables()
 
 void Calculator::removeUserFunction(const QString &name)
 {
-    if (m_sheet.owns(name) || m_sheet.isEvaluating())
+    if (m_sheet.isEvaluating())
         return;
+    if (m_sheet.isFunction(name))
+        unbindFunction(name);
     m_env.removeFunction(name);
     namesChanged({name});
 }
@@ -301,9 +327,76 @@ void Calculator::clearUserFunctions()
 {
     if (m_sheet.isEvaluating())
         return;
-    const QStringList names = m_env.userFunctions().keys();
+    QStringList names = m_env.userFunctions().keys();
+    for (const QString &name : m_sheet.functionNames()) {
+        unbindFunction(name);
+        names.append(name);
+    }
     m_env.clearFunctions();
     namesChanged(QSet<QString>(names.cbegin(), names.cend()));
+}
+
+QString Calculator::setVariable(const QString &name, const QString &text)
+{
+    const QString expression = text.trimmed();
+    if (m_sheet.isEvaluating())
+        return u"The history is updating"_s;
+    if (expression.isEmpty())
+        return u"Expected a value"_s;
+    if (name == u"ans"_s || isResultName(name) || Environment::isConstant(name) || findBuiltinFunction(name))
+        return u"%1 cannot be changed"_s.arg(name);
+    if (m_sheet.isFunction(name) || (m_sheet.ownerIndex(name) < 0 && m_env.isFunction(name)))
+        return u"%1 is a function"_s.arg(name);
+
+    // What the expression gives now, on a copy: an error changes nothing,
+    // not even for a moment.
+    Number value = 0;
+    try {
+        Environment scratch = m_env;
+        value = parseExpression(expression, functionPredicate())->evaluate(scratch);
+    } catch (const CalcError &error) {
+        return error.message;
+    }
+    if (std::isnan(value))
+        return u"Not a number"_s;
+    if (std::isinf(value))
+        return u"Result is too large"_s;
+
+    const int owner = m_sheet.ownerIndex(name);
+    if (owner >= 0) {
+        // Bound: the entry defining it changes, and what depends on it
+        // follows. One assigning more names lets go of this one, which a
+        // new entry defines.
+        // What only shows once bound, a loop, takes the change back.
+        const QString before = m_sheet.entries()[owner].source;
+        const QString assignment = u"%1 = %2"_s.arg(name, expression);
+        QString error;
+        if (m_sheet.entries()[owner].names.size() == 1) {
+            m_sheet.edit(owner, assignment);
+            error = m_sheet.entries()[owner].error;
+            if (!error.isEmpty())
+                m_sheet.edit(owner, before);
+        } else {
+            m_sheet.edit(owner, m_sheet.sourceWithout(owner, name));
+            const int added = m_sheet.append(assignment);
+            error = m_sheet.entries()[added].error;
+            if (!error.isEmpty()) {
+                m_sheet.remove(added);
+                m_sheet.edit(owner, before);
+            }
+        }
+        syncHistory();
+        refreshLists();
+        if (!error.isEmpty())
+            return error;
+        finish({});
+        return {};
+    }
+
+    // The environment's own takes the value the expression has now.
+    m_env.setVariable(name, value);
+    namesChanged({name});
+    return {};
 }
 
 // The entries go; what they defined stays, as plain values and functions
@@ -364,13 +457,14 @@ void Calculator::refreshVariables()
     for (const QString &name : std::as_const(names)) {
         const int owner = m_sheet.ownerIndex(name);
         if (owner < 0) {
-            entries.append({name, formatValue(variables.value(name)), QString(), QString(), false, name});
+            entries.append({name, formatValue(variables.value(name)), QString(), QString(), false, name,
+                            QString::number(variables.value(name), 'g', 15)});
             continue;
         }
-        // Bound by an entry: it goes when that entry is changed or removed.
+        // Bound by an entry: editing it changes that entry.
         const Worksheet::Entry &entry = m_sheet.entries()[owner];
         entries.append({name, entry.error.isEmpty() ? formatValue(entry.value) : entry.error,
-                        u"Defined by %1"_s.arg(entry.name()), QString(), true, name});
+                        u"Defined by %1"_s.arg(entry.name()), QString(), false, name, m_sheet.valueSource(owner)});
     }
     m_variables->setEntries(entries);
 }
@@ -395,7 +489,7 @@ void Calculator::refreshUserFunctions()
         entries.append({name, u"%1(%2)"_s.arg(name, function.parameters.join(u", "_s)),
                         owner >= 0 ? u"%1, defined by %2"_s.arg(function.source, m_sheet.entries()[owner].name())
                                    : function.source,
-                        QString(), owner >= 0, name + u'('});
+                        QString(), false, name + u'('});
     }
     m_userFunctions->setEntries(entries);
 }

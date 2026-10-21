@@ -69,6 +69,14 @@ public:
 
     // The entry the name belongs to now, or -1.
     int ownerIndex(const QString &name) const { return m_owners.value(name, -1); }
+    // What entry `index` binds its names to: "a * 2" of "x = a * 2".
+    QString valueSource(int index) const;
+    // The entry's source without `name` among the names it assigns:
+    // "x = a * 2" becomes "a * 2", "x = y = 2" without y "x = 2".
+    QString sourceWithout(int index, const QString &name) const;
+    // The indexes of the entries assigning or defining `name`.
+    QList<int> definersOf(const QString &name) const;
+
     // The names the history binds, variables and functions.
     QStringList variableNames() const;
     QStringList functionNames() const;

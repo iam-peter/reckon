@@ -13,7 +13,7 @@ depends on it follows. On top of what SpeedCrunch does, Reckon plots
 against the calculator, so a few lines of script can define functions,
 fill variables and draw graphs.
 
-![Reckon with a few expressions, a curve plotted and a script](docs/screenshots/main.png)
+![Reckon's Calculator tab with a few expressions and the side panel](docs/screenshots/main.png)
 
 ## Download
 
@@ -35,8 +35,10 @@ Put `nightly` in place of `stable` for the nightly builds.
 
 ## Using it
 
-The window is the display with the expression line under it. Enter
-evaluates; the result appears under the expression, right-aligned, and
+The window has three tabs, Calculator, Graph and Script, with the side
+panel next to them; View → Calculator (Ctrl+L), Graph (Ctrl+G) and
+Script (Ctrl+J) switch between them. The Calculator tab is the display
+with the expression line under it. Enter evaluates; the result appears under the expression, right-aligned, and
 becomes `ans`. While typing, the result so far shows above the line, the
 expression is colored by what its parts are, and a popup completes the
 names of functions and variables (Tab or Enter takes one). Up and Down
@@ -46,8 +48,13 @@ entry's menu inserts the value or the expression instead.
 
 The side panel (Ctrl+P) has the variables, the built-in functions, a
 table of constants, the history and your own functions, each with a
-search box; a click inserts one. The keypad (Ctrl+K) has the digits,
-operators and common functions for clicking.
+search box. It serves all three tabs: a click inserts the name into the
+current tab's input, the expression line, the curve typed in last, or
+the script at its cursor. Variables can be edited there with the pencil,
+Enter applying the new expression and an error leaving the variable as
+it was, and removed with the cross, as can your functions. The keypad
+(Ctrl+K), part of the Calculator tab, has the digits, operators and
+common functions for clicking.
 
 ### A live history
 
@@ -73,9 +80,11 @@ copying a number, and `f(x) = x * k` reads `k` whenever it runs.
 - Only what depends on a change is evaluated again, so `random()`
   keeps its value until something it reads changes. Entries using
   trigonometry follow the angle unit.
-- Variables and functions an entry defines are marked in the side panel
-  and go away with their entry. Clearing the history keeps their last
-  values as plain variables and functions.
+- Variables and functions an entry defines say so in the side panel.
+  Editing such a variable there edits its entry; removing it takes the
+  assignment out of every entry making it, which keep their results, and
+  removing such a function removes its definitions. Clearing the history
+  keeps their last values as plain variables and functions.
 
 ### Expressions
 
@@ -109,7 +118,9 @@ draws new numbers then.
 
 ### Graphs
 
-View → Graph (Ctrl+G) opens the graph pane: a list of curves `y = …`,
+![The Graph tab with three curves](docs/screenshots/graph.png)
+
+The Graph tab (Ctrl+G) has a list of curves `y = …`,
 each an expression in `x` that may use every variable and function the
 calculator knows, in its own color (click the dot to change it), and the
 plot under them. Drag pans, the wheel zooms at the pointer, a double
@@ -120,7 +131,9 @@ bottom. While the pointer is over the plot, every curve's value at that
 
 ### Scripts
 
-View → Script (Ctrl+J) opens the script pane: a library of JavaScript
+![The Script tab with a script, the curves it plotted and its output](docs/screenshots/script.png)
+
+The Script tab (Ctrl+J) has a library of JavaScript
 files, an editor, and what the last run gave, its curves and its output.
 Scripts see the calculator as `calc`:
 
@@ -130,7 +143,7 @@ calc.run("x = 5")               // evaluates into the history, as if typed
 calc.get("x"); calc.set("x", 1); calc.has("x"); calc.ans
 calc.define("cube", x => x * x * x)   // cube(3) now works in expressions
 calc.undefine("cube")
-calc.plot("sin(x)", "red")       // draws in the script pane's graph
+calc.plot("sin(x)", "red")       // draws in the Script tab's graph
 calc.clearPlots()
 calc.format(1 / 3)              // "0.333333333333333", like a result
 calc.history()                  // [{name, expression, value, result, error}, …]
@@ -139,9 +152,9 @@ print("hello", 42)              // goes to the output
 
 Ctrl+Enter runs the script; scripts are saved as you type, in the
 application data folder. The curves a run plots show in a graph between
-the script and its output, which works like the Graph pane's and is
+the script and its output, which works like the Graph tab's and is
 there only when the run plotted something. Each run starts with no
-curves. The chart button copies them to the Graph pane, among your own,
+curves. The chart button copies them to the Graph tab, among your own,
 without leaving the script. A function `calc.define`s takes as many
 arguments as it declares; one declaring none, such as `(...v) => …`,
 takes any number. A script named `startup` runs every time Reckon
@@ -184,9 +197,10 @@ set.
   `Reckon.Core`.
 - `src/ui` — `GraphView`, the item that samples and paints the curves;
   `ExpressionHighlighter` for the expression line; `Clipboard`, `Fonts`.
-- `src/qml` — the window (`Main`), the `Display`, the `Editor` with its
-  completer, the `Keypad`, the `SidePanel` with its `NameList`s, the
-  `GraphPane` and the `ScriptPane`. QML module `Reckon`.
+- `src/qml` — the window (`Main`) with its tabs: the calculator's
+  `Display`, `Editor` with its completer and `Keypad`, the `GraphPane`
+  and the `ScriptPane`; and the `SidePanel` they share, with its
+  `NameList`s. QML module `Reckon`.
 
 ## Ideas
 

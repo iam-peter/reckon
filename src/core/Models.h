@@ -78,6 +78,7 @@ struct NamedEntry
     QString category;
     bool builtin = false;
     QString insertText; // what a click puts into the expression
+    QString editText; // a variable's expression, to edit it
 };
 
 class NameListModel : public QAbstractListModel
@@ -89,7 +90,10 @@ class NameListModel : public QAbstractListModel
     Q_PROPERTY(int count READ count NOTIFY countChanged)
 
 public:
-    enum Role { NameRole = Qt::UserRole + 1, ValueRole, DescriptionRole, CategoryRole, BuiltinRole, InsertTextRole };
+    enum Role {
+        NameRole = Qt::UserRole + 1, ValueRole, DescriptionRole, CategoryRole, BuiltinRole, InsertTextRole,
+        EditTextRole,
+    };
 
     using QAbstractListModel::QAbstractListModel;
 

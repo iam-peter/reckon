@@ -58,6 +58,7 @@ ColumnLayout {
             monoFont: panel.monoFont
             uiFont: panel.uiFont
             removable: true
+            editHandler: (name, text) => panel.calculator.setVariable(name, text)
             placeholder: qsTr("Search variables")
             onInsertRequested: text => panel.insertRequested(text)
             onRemoveRequested: name => panel.calculator.removeVariable(name)

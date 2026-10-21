@@ -407,6 +407,63 @@ QString Worksheet::owner(const QString &name) const
     return index >= 0 ? m_entries[index].name() : QString();
 }
 
+namespace {
+
+// The leading `name =` pairs of a source: for each, the name and where it
+// starts and where what follows its `=` starts.
+struct Assignment
+{
+    QString name;
+    int start = 0;
+    int end = 0;
+};
+
+QList<Assignment> leadingAssignments(const QString &source)
+{
+    QList<Token> tokens;
+    try {
+        tokens = tokenize(source);
+    } catch (const CalcError &) {
+        return {};
+    }
+    QList<Assignment> list;
+    for (int i = 0; i + 2 < tokens.size() && tokens[i].type == Token::Identifier
+                    && tokens[i + 1].type == Token::Assign;
+         i += 2) {
+        list.append({tokens[i].text, tokens[i].position, tokens[i + 2].position});
+    }
+    return list;
+}
+
+} // namespace
+
+QString Worksheet::valueSource(int index) const
+{
+    const QString &source = m_entries[index].source;
+    const QList<Assignment> assignments = leadingAssignments(source);
+    return assignments.isEmpty() ? source : source.mid(assignments.last().end).trimmed();
+}
+
+QString Worksheet::sourceWithout(int index, const QString &name) const
+{
+    const QString &source = m_entries[index].source;
+    for (const Assignment &assignment : leadingAssignments(source)) {
+        if (assignment.name == name)
+            return (source.left(assignment.start) + source.mid(assignment.end)).trimmed();
+    }
+    return source;
+}
+
+QList<int> Worksheet::definersOf(const QString &name) const
+{
+    QList<int> list;
+    for (int i = 0; i < size(); ++i) {
+        if (m_entries[i].names.contains(name))
+            list.append(i);
+    }
+    return list;
+}
+
 QStringList Worksheet::variableNames() const
 {
     QStringList names;

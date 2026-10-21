@@ -159,6 +159,8 @@ QVariant NameListModel::data(const QModelIndex &index, int role) const
         return entry.builtin;
     case InsertTextRole:
         return entry.insertText;
+    case EditTextRole:
+        return entry.editText;
     }
     return {};
 }
@@ -168,6 +170,7 @@ QHash<int, QByteArray> NameListModel::roleNames() const
     return {
         {NameRole, "name"}, {ValueRole, "value"}, {DescriptionRole, "description"},
         {CategoryRole, "category"}, {BuiltinRole, "builtin"}, {InsertTextRole, "insertText"},
+        {EditTextRole, "editText"},
     };
 }
 

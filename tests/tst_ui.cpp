@@ -36,6 +36,17 @@ void screenshot(QQuickWindow *window, const QString &name)
     window->grabWindow().save(dir + u'/' + name + u".png"_s);
 }
 
+// Every item under `root` in the visual tree, where list delegates are.
+QList<QQuickItem *> itemsUnder(QQuickItem *root)
+{
+    QList<QQuickItem *> items;
+    for (QQuickItem *child : root->childItems()) {
+        items.append(child);
+        items.append(itemsUnder(child));
+    }
+    return items;
+}
+
 void type(QQuickWindow *window, const QString &text)
 {
     for (const QChar &c : text)
@@ -63,8 +74,7 @@ private slots:
         QQuickStyle::setStyle(u"Fusion"_s);
         Fonts::registerBundled();
         QSettings settings;
-        settings.setValue(u"view/graph"_s, true);
-        settings.setValue(u"view/script"_s, true);
+        settings.setValue(u"view/page"_s, 0);
         settings.setValue(u"view/keypad"_s, true);
         settings.setValue(u"view/sidePanel"_s, true);
     }
@@ -149,15 +159,16 @@ private slots:
         QTest::keyClick(window, Qt::Key_Escape);
 
         // The script pane runs against the same calculator and plots into
-        // a graph of its own, leaving the Graph pane and the tab alone.
+        // a graph of its own, leaving the Graph tab and the tab alone.
         auto *scriptPane = window->findChild<QQuickItem *>(u"scriptPane"_s);
         QVERIFY(scriptPane);
         auto *library = scriptPane->property("library").value<ScriptLibrary *>();
         QVERIFY(library);
         QCOMPARE(library->directory(), scripts.path());
-        auto *toolTabs = window->findChild<QQuickItem *>(u"toolTabs"_s);
-        QVERIFY(toolTabs);
-        const int tab = toolTabs->property("currentIndex").toInt();
+        // Three tabs, the calculator first.
+        auto *pages = window->findChild<QQuickItem *>(u"pages"_s);
+        QVERIFY(pages);
+        QCOMPARE(pages->property("currentIndex").toInt(), 0);
         auto *graphPane = window->findChild<QQuickItem *>(u"graphPane"_s);
         QVERIFY(graphPane);
         auto *graph = graphPane->property("graph").value<QQuickItem *>();
@@ -176,14 +187,14 @@ private slots:
         QCOMPARE(values.size(), 2);
         QCOMPARE(values[0].toDouble(), 0.4);
         QCOMPARE(graph->property("curves").toList(), ownCurves);
-        QCOMPARE(toolTabs->property("currentIndex").toInt(), tab);
-        // The picture has the script's curves in the Graph pane, as copied.
+        QCOMPARE(pages->property("currentIndex").toInt(), 0);
+        // The picture has the script's curves in the Graph tab, as copied.
         QVERIFY(QMetaObject::invokeMethod(graphPane, "clear"));
         QVERIFY(QMetaObject::invokeMethod(scriptPane, "copyToGraphRequested",
                                           Q_ARG(QVariant, scriptPane->property("curves"))));
         QTRY_COMPARE(graph->property("curves").toList().size(), 2);
 
-        // A few more for the pictures: the graph tab, then the script tab.
+        // A few more for the pictures: the calculator, the graph, the script.
         for (const QString &expression : {u"f(x) = x^2 - 3x + 2"_s, u"f(4)"_s, u"sqrt(2) pi"_s,
                                           u"0xFF and 0b1111"_s, u"12!"_s, u"average(3, 5, 8)"_s}) {
             type(window, expression);
@@ -194,10 +205,42 @@ private slots:
         type(window, u"2 ans"_s);
         QTRY_COMPARE(preview->property("text").toString(), u"10.6666666666667"_s);
         screenshot(window, u"main"_s);
-        toolTabs->setProperty("currentIndex", 1);
+        QTest::keyClick(window, Qt::Key_Escape);
+
+        // The View menu's shortcuts pick the tab, one at a time.
+        QTest::keyClick(window, Qt::Key_G, Qt::ControlModifier);
+        QTRY_COMPARE(pages->property("currentIndex").toInt(), 1);
+        QTRY_VERIFY(graph->isVisible());
+        QVERIFY(!editor->isVisible());
+        // Names from the side panel go into the curve typed in last.
+        QQuickItem *curveField = nullptr;
+        for (QQuickItem *item : itemsUnder(graphPane)) {
+            if (QString::fromLatin1(item->metaObject()->className()).contains(u"TextField"_s)
+                && item->property("text").toString() == u"f(x)"_s) {
+                curveField = item;
+            }
+        }
+        QVERIFY(curveField);
+        // Once the tab is laid out.
+        QTRY_VERIFY(curveField->isVisible() && curveField->width() > 0);
         QTest::qWait(50);
+        QTest::mouseClick(window, Qt::LeftButton, {},
+                          curveField->mapToScene({curveField->width() - 6, curveField->height() / 2}).toPoint());
+        QTRY_VERIFY(curveField->hasActiveFocus());
+        QVERIFY(QMetaObject::invokeMethod(window, "insert", Q_ARG(QString, u" + pi"_s)));
+        QCOMPARE(curveField->property("text").toString(), u"f(x) + pi"_s);
+        QTest::keyClick(window, Qt::Key_A, Qt::ControlModifier);
+        type(window, u"f(x)"_s);
+        QTest::keyClick(window, Qt::Key_Return);
+        QTRY_COMPARE(graph->property("curves").toList().size(), 3);
+        QCOMPARE(graph->property("curves").toList()[2].toMap().value(u"expression"_s).toString(), u"f(x)"_s);
+        screenshot(window, u"graph"_s);
+
+        QTest::keyClick(window, Qt::Key_J, Qt::ControlModifier);
+        QTRY_COMPARE(pages->property("currentIndex").toInt(), 2);
         auto *scriptEditor = window->findChild<QQuickItem *>(u"scriptEditor"_s);
         QVERIFY(scriptEditor);
+        QTRY_VERIFY(scriptEditor->hasActiveFocus());
         QCOMPARE(scriptEditor->property("text").toString().left(10), u"// Scripts"_s);
         QTest::qWait(100);
         // The script is drawn, not only held: its lines show up as pixels
@@ -219,20 +262,28 @@ private slots:
         QVERIFY(scriptGraph->mapToScene({}).y() > scriptEditor->mapToScene({}).y());
         QVERIFY(scriptGraph->mapToScene({}).y() < output->mapToScene({}).y());
         screenshot(window, u"script"_s);
-        // Its button copies the curves to the Graph pane, which stays out of view.
+        // Its button copies the curves to the Graph tab, which stays out of view.
         auto *copyButton = window->findChild<QQuickItem *>(u"copyToGraph"_s);
         QVERIFY(copyButton);
         QTest::mouseClick(window, Qt::LeftButton, {},
                           copyButton->mapToScene({copyButton->width() / 2, copyButton->height() / 2}).toPoint());
         QTRY_COMPARE(graph->property("curves").toList().size(), 5);
-        QCOMPARE(toolTabs->property("currentIndex").toInt(), 1);
-        QCOMPARE(status->property("text").toString(), u"Copied 2 curves to the Graph pane"_s);
+        QCOMPARE(pages->property("currentIndex").toInt(), 2);
+        QCOMPARE(status->property("text").toString(), u"Copied 2 curves to the Graph tab"_s);
         // A run that plots nothing has no graph.
         QVERIFY(calc->script()->run(u"print('just text')"_s));
         QTRY_VERIFY(!scriptGraph->isVisible());
         QVERIFY(output->isVisible());
-        toolTabs->setProperty("currentIndex", 0);
-        QTest::keyClick(window, Qt::Key_Escape);
+        // Names from the side panel go where the script's cursor is.
+        const QString script = scriptEditor->property("text").toString();
+        scriptEditor->forceActiveFocus();
+        QVERIFY(QMetaObject::invokeMethod(window, "insert", Q_ARG(QString, u"sqrt("_s)));
+        QCOMPARE(scriptEditor->property("text").toString().size(), script.size() + 5);
+        QTest::keyClick(window, Qt::Key_Z, Qt::ControlModifier);
+        QTRY_COMPARE(scriptEditor->property("text").toString(), script);
+        QTest::keyClick(window, Qt::Key_L, Qt::ControlModifier);
+        QTRY_COMPARE(pages->property("currentIndex").toInt(), 0);
+        QTRY_VERIFY(editor->property("inputFocused").toBool());
 
         // A later assignment takes the name over; the earlier entry says so.
         type(window, u"x = 7"_s);
@@ -331,6 +382,52 @@ private slots:
         type(window, u"x = 4"_s);
         QTest::keyClick(window, Qt::Key_Return);
         QTRY_COMPARE(status->property("text").toString(), QString());
+
+        // Variables in the side panel can be edited: one an entry defines
+        // changes that entry, and a change with an error changes nothing.
+        auto variableButton = [window](const QString &name) -> QQuickItem * {
+            for (QQuickItem *button : itemsUnder(window->contentItem())) {
+                if (button->objectName() != u"editVariable"_s)
+                    continue;
+                for (QQuickItem *item = button; item; item = item->parentItem()) {
+                    if (item->property("name").toString() == name && item->property("editText").isValid())
+                        return button;
+                }
+            }
+            return nullptr;
+        };
+        auto variableEditor = [window]() -> QQuickItem * {
+            for (QQuickItem *field : itemsUnder(window->contentItem())) {
+                if (field->objectName() == u"variableEditor"_s && field->isVisible())
+                    return field;
+            }
+            return nullptr;
+        };
+        QQuickItem *editButton = variableButton(u"x"_s);
+        QVERIFY(editButton);
+        QTest::mouseClick(window, Qt::LeftButton, {},
+                          editButton->mapToScene({editButton->width() / 2, editButton->height() / 2}).toPoint());
+        QTRY_VERIFY(variableEditor());
+        QQuickItem *variableField = variableEditor();
+        QTRY_VERIFY(variableField->hasActiveFocus());
+        QCOMPARE(variableField->property("text").toString(), u"4"_s);
+        type(window, u"1 +"_s);
+        QTest::keyClick(window, Qt::Key_Return);
+        QTest::qWait(20);
+        QVERIFY(variableField->isVisible());
+        QCOMPARE(calc->history()->expressionAt(0), u"x = 4"_s);
+        bool errorShown = false;
+        for (QQuickItem *item : itemsUnder(variableField->parentItem()->parentItem())) {
+            errorShown = errorShown
+                || (item->isVisible() && item->property("text").toString() == u"Expression is incomplete"_s);
+        }
+        QVERIFY(errorShown);
+        QTest::keyClick(window, Qt::Key_A, Qt::ControlModifier);
+        type(window, u"2 * 3"_s);
+        QTest::keyClick(window, Qt::Key_Return);
+        QTRY_COMPARE(calc->history()->expressionAt(0), u"x = 2 * 3"_s);
+        QCOMPARE(calc->history()->resultAt(0), u"6"_s);
+        QTRY_VERIFY(!variableEditor());
 
         window->close();
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.isEmpty() ? QString() : warnings.first().toString()));

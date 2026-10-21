@@ -62,11 +62,10 @@ private slots:
                  u"f(x)"_s);
         QVERIFY(calc.evaluate(u"f(4)"_s));
         QCOMPARE(calc.ans(), u"8"_s);
-        // The entry defines f; the list cannot take it away from it.
+        // Removing the function removes the entry defining it.
         calc.removeUserFunction(u"f"_s);
-        QVERIFY(calc.evaluate(u"f(4)"_s));
-        calc.removeEntry(0);
         QCOMPARE(calc.userFunctions()->count(), 0);
+        QCOMPARE(calc.history()->count(), 1);
         QCOMPARE(errorAt(calc, 0), u"Unknown function f"_s);
     }
 
@@ -96,21 +95,78 @@ private slots:
         variables->setFilter(u"al"_s);
         QCOMPARE(variables->count(), 1);
         variables->setFilter({});
-        // Bound by entries, which say so, and stay until those change.
+        // Bound by entries, which say so; they can be edited and removed
+        // like the others.
         QCOMPARE(variables->data(variables->index(3), NameListModel::DescriptionRole).toString(),
                  u"Defined by $2"_s);
-        QVERIFY(variables->data(variables->index(3), NameListModel::BuiltinRole).toBool());
+        QVERIFY(!variables->data(variables->index(3), NameListModel::BuiltinRole).toBool());
+        QCOMPARE(variables->data(variables->index(3), NameListModel::EditTextRole).toString(), u"1"_s);
+        // Removing one keeps its entry, without the assignment.
         calc.removeVariable(u"alpha"_s);
-        calc.clearVariables();
-        QCOMPARE(variables->count(), 5);
+        QCOMPARE(variables->count(), 4);
+        QCOMPARE(calc.history()->expressionAt(1), u"1"_s);
+        QCOMPARE(calc.history()->count(), 2);
         // Variables a script set are the environment's own.
         QVERIFY(calc.script()->run(u"calc.set('delta', 3)"_s));
-        QCOMPARE(variables->count(), 6);
-        QVERIFY(!variables->data(variables->index(5), NameListModel::BuiltinRole).toBool());
-        calc.removeVariable(u"delta"_s);
         QCOMPARE(variables->count(), 5);
-        calc.removeEntry(1);
-        QCOMPARE(variables->count(), 4);
+        QCOMPARE(variables->data(variables->index(4), NameListModel::EditTextRole).toString(), u"3"_s);
+        calc.clearVariables();
+        QCOMPARE(variables->count(), 3);
+        QCOMPARE(calc.history()->expressionAt(0), u"2"_s);
+    }
+
+    void variablesAreEditable()
+    {
+        Calculator calc;
+        calc.evaluate(u"a = 2"_s);
+        calc.evaluate(u"b = a * 3"_s);
+        calc.evaluate(u"b + 1"_s);
+        // A bound one changes its entry, and what depends on it follows.
+        QCOMPARE(calc.setVariable(u"a"_s, u"5"_s), QString());
+        QCOMPARE(calc.history()->expressionAt(0), u"a = 5"_s);
+        QCOMPARE(resultAt(calc, 2), u"16"_s);
+        QCOMPARE(calc.variables()->data(calc.variables()->index(4), NameListModel::EditTextRole).toString(),
+                 u"a * 3"_s);
+        // A change that does not work changes nothing.
+        QCOMPARE(calc.setVariable(u"a"_s, u"1 +"_s), u"Expression is incomplete"_s);
+        QCOMPARE(calc.setVariable(u"b"_s, u"zz * 2"_s), u"Unknown variable zz"_s);
+        QCOMPARE(calc.history()->expressionAt(0), u"a = 5"_s);
+        QCOMPARE(calc.history()->expressionAt(1), u"b = a * 3"_s);
+        QCOMPARE(resultAt(calc, 2), u"16"_s);
+        QCOMPARE(calc.setVariable(u"a"_s, u" "_s), u"Expected a value"_s);
+        // Without lighting up the entries depending on it.
+        QCOMPARE(roleAt(calc, 2, HistoryModel::RevisionRole).toInt(), 1);
+        // A loop only shows once bound, and is taken back.
+        QCOMPARE(calc.setVariable(u"a"_s, u"b"_s), u"Binding loop: a \u2192 b \u2192 a"_s);
+        QCOMPARE(calc.history()->expressionAt(0), u"a = 5"_s);
+        QCOMPARE(resultAt(calc, 2), u"16"_s);
+        // One of several names an entry assigns moves to a new entry.
+        calc.evaluate(u"p = q = 2"_s);
+        QCOMPARE(calc.setVariable(u"q"_s, u"7"_s), QString());
+        QCOMPARE(calc.history()->expressionAt(3), u"p = 2"_s);
+        QCOMPARE(calc.history()->expressionAt(4), u"q = 7"_s);
+        QVERIFY(calc.evaluate(u"p * q"_s));
+        QCOMPARE(calc.ans(), u"14"_s);
+        // One the environment holds takes the expression's value now.
+        QVERIFY(calc.script()->run(u"calc.set('w', 3)"_s));
+        QCOMPARE(calc.setVariable(u"w"_s, u"a + 1"_s), QString());
+        QVERIFY(calc.evaluate(u"w"_s));
+        QCOMPARE(calc.ans(), u"6"_s);
+        // Built-in names, results and functions are not variables to edit.
+        QCOMPARE(calc.setVariable(u"pi"_s, u"3"_s), u"pi cannot be changed"_s);
+        QCOMPARE(calc.setVariable(u"ans"_s, u"3"_s), u"ans cannot be changed"_s);
+        QCOMPARE(calc.setVariable(u"$1"_s, u"3"_s), u"$1 cannot be changed"_s);
+        calc.evaluate(u"f(x) = x"_s);
+        QCOMPARE(calc.setVariable(u"f"_s, u"3"_s), u"f is a function"_s);
+        // Removing a variable takes it out of every entry assigning it.
+        calc.evaluate(u"x = 1"_s);
+        calc.evaluate(u"x = 2"_s);
+        calc.evaluate(u"y = x"_s);
+        const int rows = calc.history()->count();
+        calc.removeVariable(u"x"_s);
+        QCOMPARE(calc.history()->expressionAt(rows - 3), u"1"_s);
+        QCOMPARE(calc.history()->expressionAt(rows - 2), u"2"_s);
+        QCOMPARE(errorAt(calc, rows - 1), u"Unknown variable x"_s);
     }
 
     void editsUpdateWhatDependsOnThem()

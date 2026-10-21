@@ -16,8 +16,21 @@ ColumnLayout {
     required property font monoFont
     property font uiFont: Application.font
     property alias graph: graph
+    // The curve field typed in last, where names from the side panel go.
+    property TextField activeField: null
 
     spacing: 4
+
+    // Into the curve typed in last, or a new curve when there is none.
+    function insert(text: string) {
+        if (!activeField) {
+            addCurve(text, "")
+            return
+        }
+        activeField.remove(activeField.selectionStart, activeField.selectionEnd)
+        activeField.insert(activeField.cursorPosition, text)
+        activeField.forceActiveFocus()
+    }
 
     ListModel {
         id: curves
@@ -143,6 +156,10 @@ ColumnLayout {
                     text: row.expression
                     font: pane.monoFont
                     placeholderText: qsTr("expression in x")
+                    onActiveFocusChanged: {
+                        if (activeFocus)
+                            pane.activeField = field
+                    }
                     onEditingFinished: {
                         if (text !== row.expression) {
                             curves.setProperty(row.index, "expression", text)
