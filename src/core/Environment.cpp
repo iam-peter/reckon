@@ -94,14 +94,14 @@ Number Environment::call(const QString &name, const QList<Number> &arguments, in
         for (int i = 0; i < arguments.size(); ++i)
             frame.insert(function.parameters[i], arguments[i]);
         m_frames.append(frame);
-        try {
-            const Number result = function.body->evaluate(*this);
-            m_frames.removeLast();
-            return result;
-        } catch (...) {
-            m_frames.removeLast();
-            throw;
-        }
+        // Pop the frame while unwinding rather than in a catch block that
+        // rethrows: MSVC keeps every active catch block on the stack, and
+        // MaxCallDepth nested rethrows overflow the 1 MB Windows stack.
+        struct FramePopper {
+            QList<QHash<QString, Number>> &frames;
+            ~FramePopper() { frames.removeLast(); }
+        } popper{m_frames};
+        return function.body->evaluate(*this);
     }
     if (const auto it = m_scriptFunctions.constFind(name); it != m_scriptFunctions.cend()) {
         if (it->arity >= 0 && arguments.size() != it->arity)
