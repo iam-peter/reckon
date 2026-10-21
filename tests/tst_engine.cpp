@@ -5,6 +5,7 @@
 #include <QTest>
 
 #include <cmath>
+#include <numbers>
 
 using namespace Qt::StringLiterals;
 
@@ -107,7 +108,7 @@ private slots:
         QCOMPARE(eval(u"2(3 + 4)"_s), 14.0);
         QCOMPARE(eval(u"2x"_s), 6.0);
         QCOMPARE(eval(u"(1 + 1)(2 + 2)"_s), 8.0);
-        QCOMPARE(eval(u"2 pi"_s), 2 * M_PI);
+        QCOMPARE(eval(u"2 pi"_s), 2 * std::numbers::pi);
         // A variable before a parenthesis multiplies; a function calls.
         QCOMPARE(eval(u"x(2)"_s), 6.0);
         QCOMPARE(eval(u"2 sin(0)"_s), 0.0);
@@ -118,7 +119,7 @@ private slots:
         QCOMPARE(eval(u"5!"_s), 120.0);
         QCOMPARE(eval(u"3!!"_s), 720.0);
         QCOMPARE(eval(u"0!"_s), 1.0);
-        QVERIFY(std::fabs(eval(u"0.5!"_s) - std::sqrt(M_PI) / 2) < 1e-12);
+        QVERIFY(std::fabs(eval(u"0.5!"_s) - std::sqrt(std::numbers::pi) / 2) < 1e-12);
         QCOMPARE(errorOf(u"(-1)!"_s), u"Factorial of a negative integer"_s);
     }
 

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <numeric>
 
 using namespace Qt::StringLiterals;
@@ -152,9 +153,9 @@ QList<FunctionInfo> makeFunctions()
     add(u"atan2"_s, u"atan2(y, x)"_s, u"Angle of the point (x, y)"_s, trig, 2, 2,
         [](const Args &a, const Environment &env) { return env.fromRadians(std::atan2(a[0], a[1])); });
     add(u"degrees"_s, u"degrees(x)"_s, u"Radians to degrees"_s, trig, 1, 1,
-        [](const Args &a, const Environment &) { return a[0] * 180 / M_PI; });
+        [](const Args &a, const Environment &) { return a[0] * 180 / std::numbers::pi; });
     add(u"radians"_s, u"radians(x)"_s, u"Degrees to radians"_s, trig, 1, 1,
-        [](const Args &a, const Environment &) { return a[0] * M_PI / 180; });
+        [](const Args &a, const Environment &) { return a[0] * std::numbers::pi / 180; });
 
     const QString hyperbolic = u"Hyperbolic"_s;
     unary(u"sinh"_s, u"Hyperbolic sine"_s, hyperbolic, [](Number x) { return std::sinh(x); });

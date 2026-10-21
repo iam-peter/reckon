@@ -13,6 +13,7 @@
 #include <QStandardPaths>
 
 #include <cmath>
+#include <numbers>
 
 using namespace Qt::StringLiterals;
 
@@ -178,9 +179,9 @@ QVariantList Calculator::completions(const QString &prefix) const
             add(it.key(), it.key(), formatValue(it.value()));
     }
     if (matches(u"pi"_s))
-        add(u"pi"_s, u"pi"_s, formatValue(M_PI));
+        add(u"pi"_s, u"pi"_s, formatValue(std::numbers::pi));
     if (matches(u"e"_s))
-        add(u"e"_s, u"e"_s, formatValue(M_E));
+        add(u"e"_s, u"e"_s, formatValue(std::numbers::e));
     std::sort(list.begin(), list.end(), [](const QVariant &a, const QVariant &b) {
         return a.toMap().value(u"text"_s).toString().compare(b.toMap().value(u"text"_s).toString(),
                                                               Qt::CaseInsensitive) < 0;
@@ -237,8 +238,8 @@ void Calculator::refreshVariables()
         return a.compare(b, Qt::CaseInsensitive) < 0;
     });
     entries.append({u"ans"_s, formatValue(variables.value(u"ans"_s)), u"The last result"_s, QString(), true, u"ans"_s});
-    entries.append({u"pi"_s, formatValue(M_PI), u"Archimedes' constant"_s, QString(), true, u"pi"_s});
-    entries.append({u"e"_s, formatValue(M_E), u"Euler's number"_s, QString(), true, u"e"_s});
+    entries.append({u"pi"_s, formatValue(std::numbers::pi), u"Archimedes' constant"_s, QString(), true, u"pi"_s});
+    entries.append({u"e"_s, formatValue(std::numbers::e), u"Euler's number"_s, QString(), true, u"e"_s});
     for (const QString &name : std::as_const(names))
         entries.append({name, formatValue(variables.value(name)), QString(), QString(), false, name});
     m_variables->setEntries(entries);
@@ -352,7 +353,7 @@ bool Calculator::loadSessionJson(const QString &json)
     m_env.setVariable(u"ans"_s, 0);
     m_env.clearFunctions();
     const QJsonObject variables = session.value(u"variables"_s).toObject();
-    for (auto it = variables.cbegin(); it != variables.cend(); ++it)
+    for (auto it = variables.begin(); it != variables.end(); ++it)
         m_env.setVariable(it.key(), it.value().toDouble());
 
     const QJsonArray functions = session.value(u"functions"_s).toArray();

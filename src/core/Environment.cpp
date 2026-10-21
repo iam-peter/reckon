@@ -5,6 +5,7 @@
 #include <QtMath>
 
 #include <cmath>
+#include <numbers>
 
 using namespace Qt::StringLiterals;
 
@@ -35,9 +36,9 @@ Number Environment::variable(const QString &name, int position) const
     if (it != m_variables.cend())
         return *it;
     if (name == u"pi"_s)
-        return M_PI;
+        return std::numbers::pi;
     if (name == u"e"_s)
-        return M_E;
+        return std::numbers::e;
     throw CalcError{u"Unknown variable %1"_s.arg(name), position};
 }
 
