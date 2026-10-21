@@ -183,7 +183,7 @@ Requires Qt ≥ 6.9 and CMake ≥ 3.21.
 cmake -B build -G Ninja -DCMAKE_PREFIX_PATH=$HOME/Qt/6.12.0/gcc_64
 cmake --build build
 ctest --test-dir build --output-on-failure
-./build/src/reckon
+./build/bin/reckon
 ```
 
 `cmake --install build` also installs a desktop file and the icon.

@@ -89,7 +89,7 @@ jobs:
           export QMAKE="$QT_ROOT_DIR/bin/qmake"
           export QML_SOURCES_PATHS="$GITHUB_WORKSPACE/src/qml"
           export LD_LIBRARY_PATH="$QT_ROOT_DIR/lib:$LD_LIBRARY_PATH"
-          ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable build/src/reckon \
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable build/bin/reckon \
             --desktop-file src/logo/reckon.desktop --icon-file src/logo/reckon.svg \
             --plugin qt --output appimage
           mv Reckon-*.AppImage reckon-linux-x64.AppImage
@@ -150,7 +150,7 @@ jobs:
         run: |
           New-Item -ItemType Directory reckon | Out-Null
           # Qt puts all executables on Windows next to each other, not in src/
-          Copy-Item build/Release/reckon.exe reckon/
+          Copy-Item build/bin/Release/reckon.exe reckon/
           windeployqt --release --qmldir src/qml reckon/reckon.exe
           Compress-Archive -Path reckon -DestinationPath reckon-windows-x64.zip
 
@@ -195,8 +195,8 @@ jobs:
 
       - name: Disk image
         run: |
-          macdeployqt build/src/reckon.app -qmldir="$GITHUB_WORKSPACE/src/qml" -dmg
-          mv build/src/reckon.dmg reckon-macos.dmg
+          macdeployqt build/bin/reckon.app -qmldir="$GITHUB_WORKSPACE/src/qml" -dmg
+          mv build/bin/reckon.dmg reckon-macos.dmg
 
       - uses: actions/upload-artifact@v7
         with:
