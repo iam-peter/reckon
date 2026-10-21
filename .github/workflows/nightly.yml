@@ -72,7 +72,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: test-log-linux
@@ -102,7 +102,7 @@ jobs:
           stamp=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y%m%d%H%M%S)
           packaging/deb/build-deb.sh AppDir "$base+git$stamp.${GITHUB_SHA::7}" reckon-linux-x64.deb
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: reckon-linux
           path: |
@@ -138,7 +138,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: test-log-windows
@@ -154,7 +154,7 @@ jobs:
           windeployqt --release --qmldir src/qml reckon/reckon.exe
           Compress-Archive -Path reckon -DestinationPath reckon-windows-x64.zip
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: reckon-windows
           path: reckon-windows-x64.zip
@@ -186,7 +186,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: test-log-macos
@@ -198,7 +198,7 @@ jobs:
           macdeployqt build/src/reckon.app -qmldir="$GITHUB_WORKSPACE/src/qml" -dmg
           mv build/src/reckon.dmg reckon-macos.dmg
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: reckon-macos
           path: reckon-macos.dmg
@@ -210,7 +210,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: reckon-*
           path: artifacts
