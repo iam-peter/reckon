@@ -41,14 +41,8 @@ ApplicationWindow {
         resultFormat: AppSettings.calculator.resultFormat
         precision: AppSettings.calculator.precision
         groupDigits: AppSettings.calculator.groupDigits
-        onEvaluated: ok => {
-            if (!ok) {
-                const row = history.count - 1
-                statusMessage.text = history.data(history.index(row, 0), 260) // ErrorRole
-            } else {
-                statusMessage.text = ""
-            }
-        }
+        // The entry just typed or edited, wherever it is in the history.
+        onEvaluated: statusMessage.text = calc.error
     }
 
     Component.onCompleted: {

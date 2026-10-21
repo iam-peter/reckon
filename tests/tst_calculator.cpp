@@ -140,6 +140,15 @@ private slots:
         QCOMPARE(roleAt(calc, 2, HistoryModel::ErrorPositionRole).toInt(), 0);
         QVERIFY(!calc.evaluate(u"$9"_s));
         QCOMPARE(errorAt(calc, 4), u"There is no $9"_s);
+        QCOMPARE(calc.error(), u"There is no $9"_s);
+        // The error is the edited entry's, not the last one's.
+        QVERIFY(calc.edit(4, u"$4"_s));
+        QCOMPARE(calc.error(), QString());
+        QVERIFY(!calc.edit(0, u"a = 1 +"_s));
+        QCOMPARE(calc.error(), u"Expression is incomplete"_s);
+        QVERIFY(errorAt(calc, 4).isEmpty());
+        calc.removeEntry(3);
+        QCOMPARE(calc.error(), QString());
     }
 
     void latestAssignmentWins()

@@ -31,6 +31,9 @@ class Calculator : public QObject
     Q_PROPERTY(bool groupDigits READ groupDigits WRITE setGroupDigits NOTIFY formatChanged)
     // The last result, formatted.
     Q_PROPERTY(QString ans READ ans NOTIFY evaluated)
+    // What went wrong with the entry just evaluated or edited, for the
+    // status bar; empty when it worked or after any other change.
+    Q_PROPERTY(QString error READ error NOTIFY evaluated)
     // The file the session was loaded from or saved to; empty for a new one.
     Q_PROPERTY(QString sessionFile READ sessionFile NOTIFY sessionFileChanged)
 
@@ -59,6 +62,7 @@ public:
     void setGroupDigits(bool group);
     QString ans() const;
     QString sessionFile() const { return m_sessionFile; }
+    QString error() const { return m_error; }
 
     // Evaluates into the history and `ans`. False on an error, which is in
     // the history too.
@@ -113,6 +117,8 @@ private:
     void refreshUserFunctions();
     void refreshFunctions();
     void setSessionFile(const QString &file);
+    // Records the error, if any, and says the calculator changed.
+    void finish(const QString &error);
     // The history model follows the worksheet.
     void syncHistory();
     HistoryEntry historyEntry(int index) const;
@@ -128,4 +134,5 @@ private:
     NameListModel *m_constants;
     ScriptEngine *m_script;
     QString m_sessionFile;
+    QString m_error;
 };

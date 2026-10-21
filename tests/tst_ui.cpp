@@ -318,6 +318,19 @@ private slots:
         QCOMPARE(second->height(), errorRowHeight);
         QTest::keyClick(window, Qt::Key_Escape);
         QTRY_VERIFY(!errorEditor->isVisible());
+        // An edit that fails says why in the status bar, though the last
+        // entry is fine.
+        QVERIFY(QMetaObject::invokeMethod(display, "edit", Q_ARG(int, 0)));
+        QTRY_VERIFY(entryEditor->hasActiveFocus());
+        type(window, u"x = 1 / 0"_s);
+        QTest::keyClick(window, Qt::Key_Return);
+        QTRY_COMPARE(status->property("text").toString(), u"Division by zero"_s);
+        QVERIFY(calc->history()->data(calc->history()->index(7), HistoryModel::ErrorRole).toString().isEmpty());
+        QVERIFY(QMetaObject::invokeMethod(display, "edit", Q_ARG(int, 0)));
+        QTRY_VERIFY(entryEditor->hasActiveFocus());
+        type(window, u"x = 4"_s);
+        QTest::keyClick(window, Qt::Key_Return);
+        QTRY_COMPARE(status->property("text").toString(), QString());
 
         window->close();
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.isEmpty() ? QString() : warnings.first().toString()));

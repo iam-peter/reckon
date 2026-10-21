@@ -53,7 +53,7 @@ void Calculator::setAngleUnit(AngleUnit unit)
     syncHistory();
     refreshVariables();
     emit angleUnitChanged();
-    emit evaluated(true);
+    finish({});
 }
 
 void Calculator::setResultFormat(ResultFormat format)
@@ -107,9 +107,14 @@ bool Calculator::evaluate(const QString &text)
     syncHistory();
     refreshVariables();
     refreshUserFunctions();
-    const bool ok = m_sheet.entries()[index].error.isEmpty();
-    emit evaluated(ok);
-    return ok;
+    finish(m_sheet.entries()[index].error);
+    return m_error.isEmpty();
+}
+
+void Calculator::finish(const QString &error)
+{
+    m_error = error;
+    emit evaluated(error.isEmpty());
 }
 
 bool Calculator::edit(int row, const QString &text)
@@ -125,9 +130,8 @@ bool Calculator::edit(int row, const QString &text)
     syncHistory();
     refreshVariables();
     refreshUserFunctions();
-    const bool ok = m_sheet.entries()[row].error.isEmpty();
-    emit evaluated(ok);
-    return ok;
+    finish(m_sheet.entries()[row].error);
+    return m_error.isEmpty();
 }
 
 void Calculator::removeEntry(int row)
@@ -138,7 +142,7 @@ void Calculator::removeEntry(int row)
     syncHistory();
     refreshVariables();
     refreshUserFunctions();
-    emit evaluated(true);
+    finish({});
 }
 
 void Calculator::namesChanged(const QSet<QString> &names)
@@ -146,7 +150,7 @@ void Calculator::namesChanged(const QSet<QString> &names)
     m_sheet.namesChanged(names);
     syncHistory();
     refreshLists();
-    emit evaluated(true);
+    finish({});
 }
 
 HistoryEntry Calculator::historyEntry(int index) const
@@ -331,7 +335,7 @@ void Calculator::clearHistory()
     }
     syncHistory();
     refreshLists();
-    emit evaluated(true);
+    finish({});
 }
 
 void Calculator::refreshLists()
@@ -436,7 +440,7 @@ void Calculator::newSession()
     setSessionFile({});
     refreshVariables();
     refreshUserFunctions();
-    emit evaluated(true);
+    finish({});
 }
 
 // Version 2: the history is what defines its variables and functions and
@@ -535,7 +539,7 @@ bool Calculator::loadSessionJson(const QString &json)
     syncHistory();
     refreshVariables();
     refreshUserFunctions();
-    emit evaluated(true);
+    finish({});
     return true;
 }
 
