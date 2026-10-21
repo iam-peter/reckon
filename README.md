@@ -121,7 +121,8 @@ bottom. While the pointer is over the plot, every curve's value at that
 ### Scripts
 
 View → Script (Ctrl+J) opens the script pane: a library of JavaScript
-files, an editor and the output. Scripts see the calculator as `calc`:
+files, an editor, and what the last run gave, its curves and its output.
+Scripts see the calculator as `calc`:
 
 ```js
 calc.eval("2 + 2")              // evaluates an expression, returns the number
@@ -129,14 +130,19 @@ calc.run("x = 5")               // evaluates into the history, as if typed
 calc.get("x"); calc.set("x", 1); calc.has("x"); calc.ans
 calc.define("cube", x => x * x * x)   // cube(3) now works in expressions
 calc.undefine("cube")
-calc.plot("sin(x)", "red"); calc.clearPlots()
+calc.plot("sin(x)", "red")       // draws in the script pane's graph
+calc.clearPlots()
 calc.format(1 / 3)              // "0.333333333333333", like a result
 calc.history()                  // [{name, expression, value, result, error}, …]
 print("hello", 42)              // goes to the output
 ```
 
 Ctrl+Enter runs the script; scripts are saved as you type, in the
-application data folder. A function `calc.define`s takes as many
+application data folder. The curves a run plots show in a graph between
+the script and its output, which works like the Graph pane's and is
+there only when the run plotted something. Each run starts with no
+curves. The chart button copies them to the Graph pane, among your own,
+without leaving the script. A function `calc.define`s takes as many
 arguments as it declares; one declaring none, such as `(...v) => …`,
 takes any number. A script named `startup` runs every time Reckon
 starts, which is the place for functions you use often.

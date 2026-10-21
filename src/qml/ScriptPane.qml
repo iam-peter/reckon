@@ -7,16 +7,29 @@ import Reckon
 import Reckon.Core
 
 // JavaScript against the calculator: a library of scripts kept as files,
-// an editor for the current one, and the output of running it.
+// an editor for the current one, and what running it gave: the curves it
+// plotted, in a graph of their own that each run starts afresh, and the
+// output. The curves can go to the Graph pane from there.
 ColumnLayout {
     id: pane
 
     required property Calculator calculator
     required property font monoFont
+    property font uiFont: Application.font
     // Empty for the application data folder.
     property string scriptDirectory: ""
     property alias library: library
     property string current: ""
+    property alias graph: scriptGraph
+    // The last run's curves, each with its color.
+    readonly property var curves: calculator.script.plots.map((plot, i) => ({
+        expression: plot.expression,
+        color: plot.color !== "" ? plot.color : String(Theme.curveColor(i)),
+        visible: true,
+    }))
+
+    // The copy button: these curves should go to the Graph pane.
+    signal copyToGraphRequested(var curves)
 
     spacing: 4
 
@@ -30,10 +43,12 @@ ColumnLayout {
 //   calc.run("x = 5")            evaluates it into the history
 //   calc.get("x"), calc.set("x", 1), calc.has("x"), calc.ans
 //   calc.define("name", fn)      makes name(...) call fn in expressions
-//   calc.plot("sin(x)", "red"), calc.clearPlots()
+//   calc.plot("sin(x)", "red")   draws under the script
+//   calc.clearPlots()            takes the curves away again
 //   calc.format(1 / 3)           formats a number like a result
 //   calc.history()               the expressions and results so far
-// print(...) writes to the output. A script named "startup" runs when
+// print(...) writes to the output. Each run starts with no curves; the
+// chart button copies them to the Graph pane. A script named "startup" runs when
 // Reckon starts, a good place for functions used often.
 
 calc.define("cube", x => x * x * x)
@@ -43,7 +58,6 @@ calc.define("sumsq", (...v) => v.reduce((s, x) => s + x * x, 0))
 print("cube(3) =", calc.eval("cube(3)"))
 print("hyp(3, 4) =", calc.eval("hyp(3, 4)"))
 
-calc.clearPlots()
 calc.plot("cube(x) / 20")
 calc.plot("sin(x) * 4", "#1b7ced")
 `
@@ -208,6 +222,77 @@ calc.plot("sin(x) * 4", "#1b7ced")
                     id: fontMetrics
                     font: pane.monoFont
                 }
+            }
+        }
+
+        // Only there when the run plotted.
+        ColumnLayout {
+            id: graphSection
+            visible: pane.curves.length > 0
+            SplitView.preferredHeight: 240
+            SplitView.minimumHeight: 120
+            spacing: 2
+
+            PanelHeader {
+                Layout.fillWidth: true
+                title: qsTr("Graph")
+                IconButton { iconName: "zoom-in"; tip: qsTr("Zoom in"); onClicked: scriptGraph.zoomIn() }
+                IconButton { iconName: "zoom-out"; tip: qsTr("Zoom out"); onClicked: scriptGraph.zoomOut() }
+                IconButton { iconName: "maximize"; tip: qsTr("Standard view"); onClicked: scriptGraph.resetView() }
+                IconButton {
+                    objectName: "copyToGraph"
+                    iconName: "chart-line"
+                    tip: qsTr("Copy the curves to the Graph pane")
+                    onClicked: pane.copyToGraphRequested(pane.curves)
+                }
+            }
+
+            // Which color is which curve, and what is wrong with one.
+            Flow {
+                Layout.fillWidth: true
+                Layout.leftMargin: 8
+                Layout.rightMargin: 8
+                spacing: 12
+
+                Repeater {
+                    model: pane.curves
+                    delegate: Row {
+                        id: legendItem
+                        required property var modelData
+                        required property int index
+                        readonly property string error: scriptGraph.errors[index] ?? ""
+                        spacing: 5
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 10
+                            height: 10
+                            radius: 5
+                            color: legendItem.modelData.color
+                        }
+                        Label {
+                            text: legendItem.error !== ""
+                                  ? `${legendItem.modelData.expression}: ${legendItem.error}`
+                                  : legendItem.modelData.expression
+                            font: pane.monoFont
+                            color: legendItem.error !== "" ? Theme.error : Theme.expression
+                        }
+                    }
+                }
+            }
+
+            GraphView {
+                id: scriptGraph
+                objectName: "scriptGraph"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                calculator: pane.calculator
+                curves: pane.curves
+                showGrid: AppSettings.graph.showGrid
+                backgroundColor: Theme.graphBackground
+                gridColor: Theme.graphGrid
+                axisColor: Theme.graphAxis
+                textColor: Theme.graphAxis
+                font: pane.uiFont
             }
         }
 

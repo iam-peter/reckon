@@ -424,14 +424,23 @@ private slots:
     {
         Calculator calc;
         ScriptEngine *script = calc.script();
-        QSignalSpy plots(script, &ScriptEngine::plotRequested);
-        QSignalSpy cleared(script, &ScriptEngine::plotsCleared);
-        QVERIFY(script->run(u"calc.clearPlots(); calc.plot('sin(x)', 'red'); calc.plot('x^2')"_s));
-        QCOMPARE(cleared.count(), 1);
-        QCOMPARE(plots.count(), 2);
-        QCOMPARE(plots[0][0].toString(), u"sin(x)"_s);
-        QCOMPARE(plots[0][1].toString(), u"red"_s);
-        QCOMPARE(plots[1][1].toString(), QString());
+        QSignalSpy changed(script, &ScriptEngine::plotsChanged);
+        QVERIFY(script->run(u"calc.plot('sin(x)', 'red'); calc.plot('x^2')"_s));
+        QCOMPARE(changed.count(), 2);
+        QVariantList plots = script->plots();
+        QCOMPARE(plots.size(), 2);
+        QCOMPARE(plots[0].toMap().value(u"expression"_s).toString(), u"sin(x)"_s);
+        QCOMPARE(plots[0].toMap().value(u"color"_s).toString(), u"red"_s);
+        QCOMPARE(plots[1].toMap().value(u"color"_s).toString(), QString());
+        // Each run starts with no curves, and clearPlots() takes them away.
+        QVERIFY(script->run(u"calc.plot('cos(x)')"_s));
+        plots = script->plots();
+        QCOMPARE(plots.size(), 1);
+        QCOMPARE(plots[0].toMap().value(u"expression"_s).toString(), u"cos(x)"_s);
+        QVERIFY(script->run(u"calc.plot('1'); calc.clearPlots(); calc.plot('2')"_s));
+        QCOMPARE(script->plots().size(), 1);
+        QVERIFY(script->run(u"print('no curves')"_s));
+        QCOMPARE(script->plots().size(), 0);
     }
 
     void scriptLibrary()

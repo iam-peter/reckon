@@ -148,25 +148,40 @@ private slots:
         QCOMPARE(editor->property("text").toString(), u"sin(x) + 1 / 0"_s);
         QTest::keyClick(window, Qt::Key_Escape);
 
-        // The script pane runs against the same calculator and plots.
+        // The script pane runs against the same calculator and plots into
+        // a graph of its own, leaving the Graph pane and the tab alone.
         auto *scriptPane = window->findChild<QQuickItem *>(u"scriptPane"_s);
         QVERIFY(scriptPane);
         auto *library = scriptPane->property("library").value<ScriptLibrary *>();
         QVERIFY(library);
         QCOMPARE(library->directory(), scripts.path());
-        QVERIFY(QMetaObject::invokeMethod(scriptPane, "run"));
-        QCOMPARE(library->names(), QStringList{u"Example"_s});
-        QTRY_VERIFY(calc->script()->output().contains(u"cube(3) = 27"_s));
+        auto *toolTabs = window->findChild<QQuickItem *>(u"toolTabs"_s);
+        QVERIFY(toolTabs);
+        const int tab = toolTabs->property("currentIndex").toInt();
         auto *graphPane = window->findChild<QQuickItem *>(u"graphPane"_s);
         QVERIFY(graphPane);
         auto *graph = graphPane->property("graph").value<QQuickItem *>();
         QVERIFY(graph);
-        QTRY_COMPARE(graph->property("curves").toList().size(), 2);
-        QCOMPARE(graph->property("errors").toStringList(), (QStringList{QString(), QString()}));
+        const QVariantList ownCurves = graph->property("curves").toList();
+        QVERIFY(QMetaObject::invokeMethod(scriptPane, "run"));
+        QCOMPARE(library->names(), QStringList{u"Example"_s});
+        QTRY_VERIFY(calc->script()->output().contains(u"cube(3) = 27"_s));
+        auto *scriptGraph = scriptPane->property("graph").value<QQuickItem *>();
+        QVERIFY(scriptGraph);
+        QTRY_COMPARE(scriptGraph->property("curves").toList().size(), 2);
+        QCOMPARE(scriptGraph->property("errors").toStringList(), (QStringList{QString(), QString()}));
         QVariantList values;
-        QVERIFY(QMetaObject::invokeMethod(graph, "valuesAt", Q_RETURN_ARG(QVariantList, values), Q_ARG(qreal, 2.0)));
+        QVERIFY(QMetaObject::invokeMethod(scriptGraph, "valuesAt", Q_RETURN_ARG(QVariantList, values),
+                                          Q_ARG(qreal, 2.0)));
         QCOMPARE(values.size(), 2);
         QCOMPARE(values[0].toDouble(), 0.4);
+        QCOMPARE(graph->property("curves").toList(), ownCurves);
+        QCOMPARE(toolTabs->property("currentIndex").toInt(), tab);
+        // The picture has the script's curves in the Graph pane, as copied.
+        QVERIFY(QMetaObject::invokeMethod(graphPane, "clear"));
+        QVERIFY(QMetaObject::invokeMethod(scriptPane, "copyToGraphRequested",
+                                          Q_ARG(QVariant, scriptPane->property("curves"))));
+        QTRY_COMPARE(graph->property("curves").toList().size(), 2);
 
         // A few more for the pictures: the graph tab, then the script tab.
         for (const QString &expression : {u"f(x) = x^2 - 3x + 2"_s, u"f(4)"_s, u"sqrt(2) pi"_s,
@@ -179,8 +194,6 @@ private slots:
         type(window, u"2 ans"_s);
         QTRY_COMPARE(preview->property("text").toString(), u"10.6666666666667"_s);
         screenshot(window, u"main"_s);
-        auto *toolTabs = window->findChild<QQuickItem *>(u"toolTabs"_s);
-        QVERIFY(toolTabs);
         toolTabs->setProperty("currentIndex", 1);
         QTest::qWait(50);
         auto *scriptEditor = window->findChild<QQuickItem *>(u"scriptEditor"_s);
@@ -198,7 +211,26 @@ private slots:
                 inked += grab.pixel(x, y) != background;
         }
         QVERIFY2(inked > 3000, qPrintable(u"only %1 pixels of script text drawn"_s.arg(inked)));
+        // The run's graph sits between the script and its output.
+        QVERIFY(scriptGraph->isVisible());
+        auto *output = window->findChild<QQuickItem *>(u"scriptOutput"_s);
+        QVERIFY(output);
+        QVERIFY(output->isVisible());
+        QVERIFY(scriptGraph->mapToScene({}).y() > scriptEditor->mapToScene({}).y());
+        QVERIFY(scriptGraph->mapToScene({}).y() < output->mapToScene({}).y());
         screenshot(window, u"script"_s);
+        // Its button copies the curves to the Graph pane, which stays out of view.
+        auto *copyButton = window->findChild<QQuickItem *>(u"copyToGraph"_s);
+        QVERIFY(copyButton);
+        QTest::mouseClick(window, Qt::LeftButton, {},
+                          copyButton->mapToScene({copyButton->width() / 2, copyButton->height() / 2}).toPoint());
+        QTRY_COMPARE(graph->property("curves").toList().size(), 5);
+        QCOMPARE(toolTabs->property("currentIndex").toInt(), 1);
+        QCOMPARE(status->property("text").toString(), u"Copied 2 curves to the Graph pane"_s);
+        // A run that plots nothing has no graph.
+        QVERIFY(calc->script()->run(u"print('just text')"_s));
+        QTRY_VERIFY(!scriptGraph->isVisible());
+        QVERIFY(output->isVisible());
         toolTabs->setProperty("currentIndex", 0);
         QTest::keyClick(window, Qt::Key_Escape);
 

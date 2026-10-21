@@ -21,6 +21,7 @@ ScriptEngine::ScriptEngine(Calculator *calculator)
 
 bool ScriptEngine::run(const QString &code, const QString &fileName)
 {
+    clearPlots();
     const QJSValue result = m_engine.evaluate(code, fileName);
     m_calculator->refreshLists();
     if (result.isError()) {
@@ -39,6 +40,20 @@ void ScriptEngine::clearOutput()
         return;
     m_output.clear();
     emit outputChanged();
+}
+
+void ScriptEngine::plot(const QString &expression, const QString &color)
+{
+    m_plots.append(QVariantMap{{u"expression"_s, expression}, {u"color"_s, color}});
+    emit plotsChanged();
+}
+
+void ScriptEngine::clearPlots()
+{
+    if (m_plots.isEmpty())
+        return;
+    m_plots.clear();
+    emit plotsChanged();
 }
 
 void ScriptEngine::print(const QString &text)
@@ -197,12 +212,12 @@ QVariantList ScriptApi::history()
 
 void ScriptApi::plot(const QString &expression, const QString &color)
 {
-    emit m_engine->plotRequested(expression, color);
+    m_engine->plot(expression, color);
 }
 
 void ScriptApi::clearPlots()
 {
-    emit m_engine->plotsCleared();
+    m_engine->clearPlots();
 }
 
 void ScriptApi::print(const QString &text)

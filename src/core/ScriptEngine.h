@@ -2,42 +2,49 @@
 
 #include <QJSEngine>
 #include <QObject>
+#include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
 class Calculator;
 class ScriptApi;
 
 // Runs JavaScript against the calculator. Scripts see a `calc` object
-// (see ScriptApi) and `print`, whose output collects in `output`.
+// (see ScriptApi) and `print`, whose output collects in `output`; the
+// curves a run plots are its `plots`.
 class ScriptEngine : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
     QML_UNCREATABLE("Comes from Calculator")
     Q_PROPERTY(QString output READ output NOTIFY outputChanged)
+    // What the last run plotted, as {expression, color} maps, the color
+    // empty where the script gave none. Each run starts with none.
+    Q_PROPERTY(QVariantList plots READ plots NOTIFY plotsChanged)
 
 public:
     explicit ScriptEngine(Calculator *calculator);
 
     QString output() const { return m_output; }
+    QVariantList plots() const { return m_plots; }
 
     // Runs the code; false when it threw, with the error in the output.
     Q_INVOKABLE bool run(const QString &code, const QString &fileName = {});
     Q_INVOKABLE void clearOutput();
 
     void print(const QString &text);
+    void plot(const QString &expression, const QString &color);
+    void clearPlots();
 
 signals:
     void outputChanged();
-    // calc.plot(expression, color) and calc.clearPlots() from a script.
-    void plotRequested(const QString &expression, const QString &color);
-    void plotsCleared();
+    void plotsChanged();
 
 private:
     Calculator *m_calculator;
     QJSEngine m_engine;
     ScriptApi *m_api;
     QString m_output;
+    QVariantList m_plots;
 };
 
 // The `calc` object of scripts.

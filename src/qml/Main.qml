@@ -51,18 +51,6 @@ ApplicationWindow {
         }
     }
 
-    Connections {
-        target: calc.script
-        function onPlotRequested(expression: string, color: string) {
-            graphPane.addCurve(expression, color)
-            AppSettings.view.graph = true
-            AppSettings.view.toolTab = 0
-        }
-        function onPlotsCleared() {
-            graphPane.clear()
-        }
-    }
-
     Component.onCompleted: {
         if (initialSession !== "") {
             if (!calc.loadSession(Qt.resolvedUrl(initialSession).toString().startsWith("file:")
@@ -381,7 +369,17 @@ ApplicationWindow {
                     objectName: "scriptPane"
                     calculator: calc
                     monoFont: root.monoFont
+                    uiFont: root.uiFont
                     scriptDirectory: root.scriptDirectory
+                    // The curves join the Graph pane's; the script stays in view.
+                    onCopyToGraphRequested: curves => {
+                        for (const curve of curves)
+                            graphPane.addCurve(curve.expression, curve.color)
+                        AppSettings.view.graph = true
+                        statusMessage.text = curves.length === 1
+                            ? qsTr("Copied a curve to the Graph pane")
+                            : qsTr("Copied %1 curves to the Graph pane").arg(curves.length)
+                    }
                 }
             }
         }

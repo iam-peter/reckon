@@ -31,6 +31,9 @@ qt_add_library(reckon_ui STATIC)
 qt_add_qml_module(reckon_ui
     URI Reckon
     VERSION 1.0
+    # GraphView and ExpressionHighlighter take a Calculator, so tools
+    # reading this module's types need Reckon.Core's.
+    DEPENDENCIES Reckon.Core
     QML_FILES
         qml/Main.qml
         qml/AppSettings.qml
