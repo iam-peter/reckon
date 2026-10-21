@@ -3,6 +3,7 @@
 #include "Functions.h"
 #include "Lexer.h"
 
+#include <algorithm>
 #include <cmath>
 
 using namespace Qt::StringLiterals;
@@ -526,6 +527,38 @@ QString Worksheet::replaceReferences(const QString &source, const QString &name,
         result.replace(start, end - start, parenthesize ? u'(' + text + u')' : text);
     }
     return result;
+}
+
+QString Worksheet::renameVariable(const QString &source, const QString &from, const QString &to)
+{
+    QList<std::pair<int, int>> spans; // position, length
+    for (const Assignment &assignment : leadingAssignments(source)) {
+        if (assignment.name == from)
+            spans.append({assignment.start, int(from.size())});
+    }
+    for (const Token &token : referenceTokens(source)) {
+        if (token.text == from)
+            spans.append({token.position, token.length});
+    }
+    std::sort(spans.begin(), spans.end());
+    QString result = source;
+    for (auto span = spans.crbegin(); span != spans.crend(); ++span)
+        result.replace(span->first, span->second, to);
+    return result;
+}
+
+QStringList Worksheet::parametersOf(const QString &source)
+{
+    Entry entry;
+    entry.source = source;
+    analyze(entry);
+    if (!entry.definesFunction)
+        return {};
+    try {
+        return parseStatement(source).parameters;
+    } catch (const CalcError &) {
+        return {};
+    }
 }
 
 QString Worksheet::valueSource(int index) const

@@ -81,6 +81,12 @@ public:
     // parentheses where it would otherwise run into what is next to it.
     static QString replaceReferences(const QString &source, const QString &name, const QString &text);
 
+    // The source with the variable `from` called `to`, where it is
+    // assigned at the start and wherever it is referred to.
+    static QString renameVariable(const QString &source, const QString &from, const QString &to);
+    // A definition's parameters, none for anything else.
+    static QStringList parametersOf(const QString &source);
+
     // The indexes of the entries assigning or defining `name`.
     QList<int> definersOf(const QString &name) const;
 

@@ -8,8 +8,9 @@ import Reckon.Core
 
 // Variables, functions or constants: a search box over a list of names
 // with their values or usage. A click inserts the name into the current
-// tab's input; the user's own entries can be removed, and with an
-// editHandler their values edited in place.
+// tab's input; the user's own entries can be removed and, with the
+// handlers set, added and edited as "name = expression" in one editor
+// that says what is wrong while it is typed.
 ColumnLayout {
     id: list
 
@@ -17,62 +18,59 @@ ColumnLayout {
     required property font monoFont
     property font uiFont: Application.font
     property bool removable: false
-    // (name, text) => error: makes the user's entries editable, the
-    // handler applying the new text and saying what is wrong with it.
-    property var editHandler: null
-    // text => error: adds an entry from "name = expression".
-    property var addHandler: null
-    property bool adding: false
-    property string addError: ""
+    // Whether rows have a count of the places using them.
+    property bool counted: false
     property string placeholder: qsTr("Search")
-    // The entry being edited, by name, which survives the list changing.
-    property string editingName: ""
-    property string editError: ""
+    // (text, current) => what is wrong with the editor's text, as a new
+    // entry or as the new form of `current`; empty when nothing is.
+    property var checkHandler: null
+    // text => error: adds an entry.
+    property var addHandler: null
+    // (name, text) => error: changes the entry `name`.
+    property var editHandler: null
 
-    function startEditing(name: string) {
-        editError = ""
-        editingName = name
-    }
-
-    function commit(name: string, text: string) {
-        const error = editHandler(name, text)
-        if (error !== "") {
-            editError = error
-            return
-        }
-        editingName = ""
-        editError = ""
-        editingFinished()
-    }
-
-    function cancel() {
-        editingName = ""
-        editError = ""
-    }
-
-    function startAdding() {
-        cancel()
-        addError = ""
-        adding = true
-    }
-
-    function add(text: string) {
-        const error = addHandler(text)
-        if (error !== "") {
-            addError = error
-            return
-        }
-        adding = false
-        addError = ""
-        editingFinished()
-    }
+    // The editor, and the entry it edits; empty while adding.
+    property bool editorOpen: false
+    property string editorFor: ""
 
     signal insertRequested(string text)
     signal removeRequested(string name)
-    // Enter or Escape ended adding or editing: the tab's input is next.
+    // Enter or Escape closed the editor: the tab's input is next.
     signal editingFinished()
 
     spacing: 4
+
+    function openEditor(name: string, text: string) {
+        editorFor = name
+        editor.applyError = ""
+        editor.text = text
+        if (editor.visible)
+            editor.forceActiveFocus()
+        else
+            editorOpen = true
+    }
+
+    function closeEditor(finished: bool) {
+        editorOpen = false
+        editorFor = ""
+        if (finished)
+            editingFinished()
+    }
+
+    function apply() {
+        const text = editor.text
+        if (text.trim() === "") {
+            closeEditor(true)
+            return
+        }
+        if (editor.problem !== "")
+            return
+        const error = editorFor === "" ? addHandler(text) : editHandler(editorFor, text)
+        if (error !== "")
+            editor.applyError = error
+        else
+            closeEditor(true)
+    }
 
     RowLayout {
         Layout.fillWidth: true
@@ -90,43 +88,60 @@ ColumnLayout {
             visible: list.addHandler !== null
             iconName: "plus"
             tip: qsTr("Add a variable")
-            onClicked: list.startAdding()
+            onClicked: list.openEditor("", "")
         }
     }
 
-    // A new one: Enter adds it, Escape or clicking elsewhere does not.
+    // Enter applies, Escape or clicking elsewhere leaves things as they
+    // were; while the text is not acceptable it says why, and Enter waits.
     TextField {
-        id: addField
-        objectName: "variableAdder"
+        id: editor
+        objectName: "variableEditor"
+
+        // What is wrong with the text, as it is typed; nothing while empty.
+        readonly property string problem: visible && list.checkHandler && text.trim() !== ""
+                                          ? list.checkHandler(text, list.editorFor) : ""
+        // What went wrong applying it, which only shows then.
+        property string applyError: ""
+        readonly property string message: problem !== "" ? problem : applyError
+
         Layout.fillWidth: true
         Layout.leftMargin: 6
         Layout.rightMargin: 6
-        visible: list.adding
+        visible: list.editorOpen
         font: list.monoFont
         placeholderText: qsTr("name = expression")
+        selectByMouse: true
         onVisibleChanged: {
-            if (!visible)
-                return
-            text = ""
-            forceActiveFocus()
+            if (visible)
+                forceActiveFocus()
         }
-        onAccepted: list.add(text)
+        onTextChanged: applyError = ""
+        onAccepted: list.apply()
         onActiveFocusChanged: {
-            if (!activeFocus)
-                list.adding = false
+            if (!activeFocus && list.editorOpen)
+                list.closeEditor(false)
         }
         Keys.onEscapePressed: event => {
-            list.adding = false
+            list.closeEditor(true)
             event.accepted = true
-            list.editingFinished()
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: 2
+            color: "transparent"
+            border.color: Theme.error
+            visible: editor.message !== ""
         }
     }
     Label {
+        objectName: "variableProblem"
         Layout.fillWidth: true
         Layout.leftMargin: 8
         Layout.rightMargin: 8
-        visible: list.adding && list.addError !== ""
-        text: list.addError
+        visible: list.editorOpen && editor.message !== ""
+        text: editor.message
         color: Theme.error
         font.pointSize: list.uiFont.pointSize - 1
         wrapMode: Text.WordWrap
@@ -157,6 +172,13 @@ ColumnLayout {
             height: section !== "" ? implicitHeight : 0
         }
 
+        // Room for a count of two digits, so values line up.
+        TextMetrics {
+            id: countWidth
+            font.pointSize: list.uiFont.pointSize - 2
+            text: "99"
+        }
+
         delegate: ItemDelegate {
             id: row
 
@@ -169,70 +191,43 @@ ColumnLayout {
             required property string editText
             required property int references
 
-            readonly property bool editing: list.editingName !== "" && list.editingName === name
-
             width: ListView.view.width
             hoverEnabled: true
-            onClicked: {
-                if (!editing)
-                    list.insertRequested(insertText)
-            }
+            highlighted: list.editorOpen && list.editorFor === name
+            onClicked: list.insertRequested(insertText)
             ToolTip.visible: hovered && description !== ""
             ToolTip.text: description
             ToolTip.delay: 700
 
-            contentItem: ColumnLayout {
-                spacing: 2
-                RowLayout {
-                    spacing: 8
-                    Label {
-                        text: row.name
-                        font: list.monoFont
-                        elide: Text.ElideRight
-                        Layout.preferredWidth: Math.min(implicitWidth, row.width * 0.5)
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        visible: !row.editing
-                        text: row.value
-                        font: list.monoFont
-                        color: Theme.expression
-                        horizontalAlignment: Text.AlignRight
-                        elide: Text.ElideMiddle
-                    }
-                    // Enter applies the change, Escape or clicking elsewhere
-                    // leaves the value as it was.
-                    TextField {
-                        id: editField
-                        objectName: "variableEditor"
-                        Layout.fillWidth: true
-                        visible: row.editing
-                        font: list.monoFont
-                        topPadding: 2
-                        bottomPadding: 2
-                        selectByMouse: true
-                        onVisibleChanged: {
-                            if (!visible)
-                                return
-                            text = row.editText
-                            selectAll()
-                            forceActiveFocus()
-                        }
-                        onAccepted: list.commit(row.name, text)
-                        onActiveFocusChanged: {
-                            if (!activeFocus && row.editing)
-                                list.cancel()
-                        }
-                        Keys.onEscapePressed: event => {
-                            list.cancel()
-                            event.accepted = true
-                            list.editingFinished()
-                        }
-                    }
+            // Every row keeps the room of the count and the buttons, the
+            // built-in ones too, so the values form one column.
+            contentItem: RowLayout {
+                spacing: 4
+                Label {
+                    text: row.name
+                    font: list.monoFont
+                    elide: Text.ElideRight
+                    Layout.preferredWidth: Math.min(implicitWidth, row.width * 0.5)
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: row.value
+                    font: list.monoFont
+                    color: Theme.expression
+                    horizontalAlignment: Text.AlignRight
+                    // The leading digits say the most.
+                    elide: Text.ElideRight
+                }
+                Item {
+                    visible: list.counted
+                    implicitWidth: countWidth.advanceWidth + 12
+                    implicitHeight: count.implicitHeight
                     // How many entries, functions and curves use it.
                     Label {
+                        id: count
                         objectName: "referenceCount"
-                        visible: row.references > 0 && !row.editing
+                        anchors.centerIn: parent
+                        visible: row.references > 0
                         text: row.references
                         font.pointSize: list.uiFont.pointSize - 2
                         color: Theme.preview
@@ -244,36 +239,30 @@ ColumnLayout {
                             border.color: Theme.separator
                         }
                     }
-                    IconButton {
-                        objectName: "editVariable"
-                        visible: list.editHandler !== null && !row.builtin && !row.editing
-                        opacity: row.hovered ? 1 : 0.35
-                        iconName: "pencil"
-                        tip: qsTr("Edit")
-                        implicitWidth: 22
-                        implicitHeight: 22
-                        padding: 2
-                        onClicked: list.startEditing(row.name)
-                    }
-                    IconButton {
-                        objectName: "removeName"
-                        visible: list.removable && !row.builtin
-                        opacity: row.hovered ? 1 : 0.35
-                        iconName: "x"
-                        tip: qsTr("Remove")
-                        implicitWidth: 22
-                        implicitHeight: 22
-                        padding: 2
-                        onClicked: list.removeRequested(row.name)
-                    }
                 }
-                Label {
-                    Layout.fillWidth: true
-                    visible: row.editing && list.editError !== ""
-                    text: list.editError
-                    color: Theme.error
-                    font.pointSize: list.uiFont.pointSize - 1
-                    wrapMode: Text.WordWrap
+                IconButton {
+                    objectName: "editVariable"
+                    visible: list.editHandler !== null
+                    enabled: !row.builtin
+                    opacity: row.builtin ? 0 : row.hovered || row.highlighted ? 1 : 0.35
+                    iconName: "pencil"
+                    tip: qsTr("Edit")
+                    implicitWidth: 22
+                    implicitHeight: 22
+                    padding: 2
+                    onClicked: list.openEditor(row.name, `${row.name} = ${row.editText}`)
+                }
+                IconButton {
+                    objectName: "removeName"
+                    visible: list.removable
+                    enabled: !row.builtin
+                    opacity: row.builtin ? 0 : row.hovered ? 1 : 0.35
+                    iconName: "x"
+                    tip: qsTr("Remove")
+                    implicitWidth: 22
+                    implicitHeight: 22
+                    padding: 2
+                    onClicked: list.removeRequested(row.name)
                 }
             }
         }

@@ -89,9 +89,16 @@ public:
     // takes the value the expression has now. The error, empty when it
     // worked, in which case nothing changed.
     Q_INVOKABLE QString setVariable(const QString &name, const QString &expression);
+    // What is wrong with "name = expression" as a new variable, or as the
+    // new form of `current`, which may get another name; empty when
+    // nothing is. Changes nothing.
+    Q_INVOKABLE QString checkVariable(const QString &assignment, const QString &current = {}) const;
     // Adds `name = expression` to the history, which binds it. The error,
     // empty when it worked, in which case nothing changed.
     Q_INVOKABLE QString addVariable(const QString &assignment);
+    // Gives `current` the "name = expression", renaming it everywhere it
+    // is used when the name differs. The error, empty when it worked.
+    Q_INVOKABLE QString changeVariable(const QString &current, const QString &assignment);
     // Removes a variable; whatever refers to it gets its last value.
     Q_INVOKABLE void removeVariable(const QString &name);
     Q_INVOKABLE void clearVariables();
@@ -105,6 +112,10 @@ public:
     Q_INVOKABLE QString replaceInCurve(const QString &expression, const QString &name, const QString &text) const
     {
         return name == QLatin1String("x") ? expression : Worksheet::replaceReferences(expression, name, text);
+    }
+    Q_INVOKABLE QString renameInCurve(const QString &expression, const QString &from, const QString &to) const
+    {
+        return from == QLatin1String("x") ? expression : Worksheet::renameVariable(expression, from, to);
     }
 
     // Sessions: the history, variables and functions as JSON.
@@ -132,6 +143,7 @@ signals:
     void sessionFileChanged();
     // A variable went; what referred to it should say `value` instead.
     void variableRemoved(const QString &name, const QString &value);
+    void variableRenamed(const QString &from, const QString &to);
 
 private:
     void refreshVariables();
@@ -140,6 +152,7 @@ private:
     void setSessionFile(const QString &file);
     void unbindVariable(const QString &name);
     void forgetVariable(const QString &name);
+    void renameVariable(const QString &from, const QString &to);
     std::optional<Number> currentValue(const QString &name) const;
     static QString numberText(Number value);
     // How many entries, functions and curves refer to each name.

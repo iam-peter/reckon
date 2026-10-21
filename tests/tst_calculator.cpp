@@ -242,6 +242,62 @@ private slots:
         QCOMPARE(resultAt(calc, 14), u"6"_s);
     }
 
+    void variablesAreCheckedAndRenamed()
+    {
+        Calculator calc;
+        QSignalSpy renamed(&calc, &Calculator::variableRenamed);
+        calc.evaluate(u"a = 5"_s);
+        calc.evaluate(u"b = a * 2"_s);
+        calc.evaluate(u"f(t) = t + a"_s);
+        calc.evaluate(u"g(a) = a + 1"_s);
+        calc.evaluate(u"h(z) = z + a"_s);
+        calc.setCurveExpressions({u"a x"_s});
+        // What is wrong, without changing anything.
+        QCOMPARE(calc.checkVariable(u"c = 1"_s), QString());
+        QCOMPARE(calc.checkVariable(u"c"_s), u"Expected a name, = and its value"_s);
+        QCOMPARE(calc.checkVariable(u"c ="_s), u"Expression is incomplete"_s);
+        QCOMPARE(calc.checkVariable(u"b = 1"_s), u"b is a variable already"_s);
+        QCOMPARE(calc.checkVariable(u"a = 7"_s, u"a"_s), QString());
+        QCOMPARE(calc.checkVariable(u"a = a + 1"_s, u"a"_s), u"a depends on itself"_s);
+        QCOMPARE(calc.checkVariable(u"b = 1"_s, u"a"_s), u"b is a variable already"_s);
+        QCOMPARE(calc.checkVariable(u"c = a + 1"_s, u"a"_s), u"a is the name being changed"_s);
+        QCOMPARE(calc.checkVariable(u"z = 1"_s, u"a"_s), u"z is a parameter of h"_s);
+        QCOMPARE(calc.checkVariable(u"x = 1"_s, u"a"_s), u"x is what the curves are plotted over"_s);
+        QCOMPARE(calc.checkVariable(u"f = 1"_s, u"a"_s), u"f is a function"_s);
+        QCOMPARE(calc.history()->expressionAt(0), u"a = 5"_s);
+
+        // A new name goes everywhere the old one was, values unchanged.
+        QCOMPARE(calc.changeVariable(u"a"_s, u"c = 5"_s), QString());
+        QCOMPARE(calc.history()->expressionAt(0), u"c = 5"_s);
+        QCOMPARE(calc.history()->expressionAt(1), u"b = c * 2"_s);
+        QCOMPARE(calc.history()->expressionAt(2), u"f(t) = t + c"_s);
+        QCOMPARE(calc.history()->expressionAt(3), u"g(a) = a + 1"_s);
+        QCOMPARE(calc.history()->expressionAt(4), u"h(z) = z + c"_s);
+        QCOMPARE(resultAt(calc, 1), u"10"_s);
+        QVERIFY(!calc.isVariable(u"a"_s));
+        QCOMPARE(renamed.count(), 1);
+        QCOMPARE(renamed[0][0].toString(), u"a"_s);
+        QCOMPARE(renamed[0][1].toString(), u"c"_s);
+        QCOMPARE(calc.renameInCurve(u"a x"_s, u"a"_s, u"c"_s), u"c x"_s);
+        QCOMPARE(calc.renameInCurve(u"sin(x)"_s, u"x"_s, u"c"_s), u"sin(x)"_s);
+        // A new name and a new expression at once.
+        QCOMPARE(calc.changeVariable(u"c"_s, u"d = 6"_s), QString());
+        QCOMPARE(calc.history()->expressionAt(0), u"d = 6"_s);
+        QCOMPARE(resultAt(calc, 1), u"12"_s);
+        // An unchanged text changes nothing; a bad one is refused.
+        QCOMPARE(calc.changeVariable(u"d"_s, u"d = 6"_s), QString());
+        QCOMPARE(calc.changeVariable(u"d"_s, u"d = 1 /"_s), u"Expression is incomplete"_s);
+        QCOMPARE(calc.changeVariable(u"nothing"_s, u"e2 = 1"_s), u"nothing is not a variable"_s);
+        // The environment's own are renamed too.
+        QVERIFY(calc.script()->run(u"calc.set('w', 2)"_s));
+        calc.evaluate(u"w * 10"_s);
+        QCOMPARE(calc.changeVariable(u"w"_s, u"v = 2"_s), QString());
+        QVERIFY(calc.isVariable(u"v"_s));
+        QVERIFY(!calc.isVariable(u"w"_s));
+        QCOMPARE(calc.history()->expressionAt(5), u"v * 10"_s);
+        QCOMPARE(resultAt(calc, 5), u"20"_s);
+    }
+
     void variablesCanBeAdded()
     {
         Calculator calc;

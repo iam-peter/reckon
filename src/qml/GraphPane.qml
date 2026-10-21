@@ -64,6 +64,20 @@ ColumnLayout {
             if (changed)
                 pane.store()
         }
+        // A variable a curve used has another name.
+        function onVariableRenamed(from: string, to: string) {
+            let changed = false
+            for (let i = 0; i < curves.count; ++i) {
+                const expression = curves.get(i).expression
+                const renamed = pane.calculator.renameInCurve(expression, from, to)
+                if (renamed !== expression) {
+                    curves.setProperty(i, "expression", renamed)
+                    changed = true
+                }
+            }
+            if (changed)
+                pane.store()
+        }
     }
 
     function addCurve(expression: string, color: string) {

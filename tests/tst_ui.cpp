@@ -383,53 +383,9 @@ private slots:
         QTest::keyClick(window, Qt::Key_Return);
         QTRY_COMPARE(status->property("text").toString(), QString());
 
-        // Variables in the side panel can be edited: one an entry defines
-        // changes that entry, and a change with an error changes nothing.
-        auto variableButton = [window](const QString &name) -> QQuickItem * {
-            for (QQuickItem *button : itemsUnder(window->contentItem())) {
-                if (button->objectName() != u"editVariable"_s)
-                    continue;
-                for (QQuickItem *item = button; item; item = item->parentItem()) {
-                    if (item->property("name").toString() == name && item->property("editText").isValid())
-                        return button;
-                }
-            }
-            return nullptr;
-        };
-        auto variableEditor = [window]() -> QQuickItem * {
-            for (QQuickItem *field : itemsUnder(window->contentItem())) {
-                if (field->objectName() == u"variableEditor"_s && field->isVisible())
-                    return field;
-            }
-            return nullptr;
-        };
-        QQuickItem *editButton = variableButton(u"x"_s);
-        QVERIFY(editButton);
-        QTest::mouseClick(window, Qt::LeftButton, {},
-                          editButton->mapToScene({editButton->width() / 2, editButton->height() / 2}).toPoint());
-        QTRY_VERIFY(variableEditor());
-        QQuickItem *variableField = variableEditor();
-        QTRY_VERIFY(variableField->hasActiveFocus());
-        QCOMPARE(variableField->property("text").toString(), u"4"_s);
-        type(window, u"1 +"_s);
-        QTest::keyClick(window, Qt::Key_Return);
-        QTest::qWait(20);
-        QVERIFY(variableField->isVisible());
-        QCOMPARE(calc->history()->expressionAt(0), u"x = 4"_s);
-        bool errorShown = false;
-        for (QQuickItem *item : itemsUnder(variableField->parentItem()->parentItem())) {
-            errorShown = errorShown
-                || (item->isVisible() && item->property("text").toString() == u"Expression is incomplete"_s);
-        }
-        QVERIFY(errorShown);
-        QTest::keyClick(window, Qt::Key_A, Qt::ControlModifier);
-        type(window, u"2 * 3"_s);
-        QTest::keyClick(window, Qt::Key_Return);
-        QTRY_COMPARE(calc->history()->expressionAt(0), u"x = 2 * 3"_s);
-        QCOMPARE(calc->history()->resultAt(0), u"6"_s);
-        QTRY_VERIFY(!variableEditor());
-
-        // The plus adds one, as an entry binding it.
+        // Variables in the side panel are added and edited as
+        // "name = expression" in one editor, which says what is wrong as
+        // it is typed and applies nothing while it is.
         auto findItem = [window](const QString &objectName, const QString &rowName = {}) -> QQuickItem * {
             for (QQuickItem *item : itemsUnder(window->contentItem())) {
                 if (item->objectName() != objectName || !item->isVisible())
@@ -446,17 +402,69 @@ private slots:
         auto click = [window](QQuickItem *item) {
             QTest::mouseClick(window, Qt::LeftButton, {}, item->mapToScene({item->width() / 2, item->height() / 2}).toPoint());
         };
+        auto problem = [&findItem]() {
+            QQuickItem *label = findItem(u"variableProblem"_s);
+            return label ? label->property("text").toString() : QString();
+        };
+        auto retype = [window](const QString &text) {
+            QTest::keyClick(window, Qt::Key_A, Qt::ControlModifier);
+            type(window, text);
+        };
+        QQuickItem *editButton = findItem(u"editVariable"_s, u"x"_s);
+        QVERIFY(editButton);
+        click(editButton);
+        QTRY_VERIFY(findItem(u"variableEditor"_s));
+        QQuickItem *variableEditor = findItem(u"variableEditor"_s);
+        QTRY_VERIFY(variableEditor->hasActiveFocus());
+        QCOMPARE(variableEditor->property("text").toString(), u"x = 4"_s);
+        QCOMPARE(problem(), QString());
+        retype(u"x = 1 +"_s);
+        QTRY_COMPARE(problem(), u"Expression is incomplete"_s);
+        QTest::keyClick(window, Qt::Key_Return);
+        QTest::qWait(20);
+        QVERIFY(variableEditor->isVisible());
+        QCOMPARE(calc->history()->expressionAt(0), u"x = 4"_s);
+        retype(u"x = 2 * 3"_s);
+        QTRY_COMPARE(problem(), QString());
+        QTest::keyClick(window, Qt::Key_Return);
+        QTRY_COMPARE(calc->history()->expressionAt(0), u"x = 2 * 3"_s);
+        QCOMPARE(calc->history()->resultAt(0), u"6"_s);
+        QTRY_VERIFY(!findItem(u"variableEditor"_s));
+        QTRY_VERIFY(editor->property("inputFocused").toBool());
+
+        // The values form one column, the built-in ones' included.
+        auto valueOf = [&findItem](const QString &rowName, const QString &value) -> QQuickItem * {
+            QQuickItem *button = findItem(u"editVariable"_s, rowName);
+            if (!button)
+                return nullptr;
+            for (QQuickItem *item : button->parentItem()->childItems()) {
+                if (item->property("text").toString() == value)
+                    return item;
+            }
+            return nullptr;
+        };
+        QQuickItem *piValue = valueOf(u"pi"_s, u"3.14159265358979"_s);
+        QQuickItem *xValue = valueOf(u"x"_s, u"6"_s);
+        QVERIFY(piValue);
+        QVERIFY(xValue);
+        QCOMPARE(piValue->mapToScene({piValue->width(), 0}).x(), xValue->mapToScene({xValue->width(), 0}).x());
+
+        // The plus adds one, as an entry binding it.
         const int rows = calc->history()->count();
         QQuickItem *addButton = findItem(u"addVariable"_s);
         QVERIFY(addButton);
         click(addButton);
-        QTRY_VERIFY(findItem(u"variableAdder"_s));
-        QTRY_VERIFY(findItem(u"variableAdder"_s)->hasActiveFocus());
-        type(window, u"rate = 3"_s);
+        QTRY_VERIFY(findItem(u"variableEditor"_s));
+        QTRY_VERIFY(findItem(u"variableEditor"_s)->hasActiveFocus());
+        QCOMPARE(findItem(u"variableEditor"_s)->property("text").toString(), QString());
+        type(window, u"rate"_s);
+        QTRY_COMPARE(problem(), u"Expected a name, = and its value"_s);
+        type(window, u" = 3"_s);
+        QTRY_COMPARE(problem(), QString());
         QTest::keyClick(window, Qt::Key_Return);
         QTRY_COMPARE(calc->history()->count(), rows + 1);
         QCOMPARE(calc->history()->expressionAt(rows), u"rate = 3"_s);
-        QTRY_VERIFY(!findItem(u"variableAdder"_s));
+        QTRY_VERIFY(!findItem(u"variableEditor"_s));
         // Its badge counts where it is used.
         QVERIFY(!findItem(u"referenceCount"_s, u"rate"_s));
         editor->setProperty("text", QString());
@@ -466,11 +474,24 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(graphPane, "addCurve", Q_ARG(QString, u"rate x"_s), Q_ARG(QString, QString())));
         QTRY_VERIFY(findItem(u"referenceCount"_s, u"rate"_s));
         QCOMPARE(findItem(u"referenceCount"_s, u"rate"_s)->property("text").toString(), u"2"_s);
+        // Another name renames it wherever it is used; a taken one is refused.
+        click(findItem(u"editVariable"_s, u"rate"_s));
+        QTRY_VERIFY(findItem(u"variableEditor"_s));
+        QTRY_VERIFY(findItem(u"variableEditor"_s)->hasActiveFocus());
+        retype(u"x = 3"_s);
+        QTRY_COMPARE(problem(), u"x is a variable already"_s);
+        retype(u"speed = 3"_s);
+        QTRY_COMPARE(problem(), QString());
+        QTest::keyClick(window, Qt::Key_Return);
+        QTRY_COMPARE(calc->history()->expressionAt(rows), u"speed = 3"_s);
+        QCOMPARE(calc->history()->expressionAt(rows + 1), u"speed * 2"_s);
+        QCOMPARE(graph->property("curves").toList().last().toMap().value(u"expression"_s).toString(),
+                 u"speed x"_s);
+        QVERIFY(!calc->isVariable(u"rate"_s));
         // Removing it leaves its value wherever it was used.
-        QQuickItem *removeButton = findItem(u"removeName"_s, u"rate"_s);
-        QVERIFY(removeButton);
-        click(removeButton);
-        QTRY_VERIFY(!calc->isVariable(u"rate"_s));
+        QTRY_VERIFY(findItem(u"removeName"_s, u"speed"_s));
+        click(findItem(u"removeName"_s, u"speed"_s));
+        QTRY_VERIFY(!calc->isVariable(u"speed"_s));
         QCOMPARE(calc->history()->expressionAt(rows), u"3"_s);
         QCOMPARE(calc->history()->expressionAt(rows + 1), u"3 * 2"_s);
         QCOMPARE(calc->history()->resultAt(rows + 1), u"6"_s);

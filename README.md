@@ -50,11 +50,13 @@ The side panel (Ctrl+P) has the variables, the built-in functions, a
 table of constants, the history and your own functions, each with a
 search box. It serves all three tabs: a click inserts the name into the
 current tab's input, the expression line, the curve typed in last, or
-the script at its cursor. The variables tab manages them: the plus adds
-one from `name = expression`, the pencil edits one, Enter applying the
-new expression and an error leaving it as it was, and the cross removes
-one, as it does your functions. A badge next to a variable counts the
-entries, functions and graph curves using it. The keypad
+the script at its cursor. The variables tab manages them. The plus and
+the pencil open one editor for `name = expression`, empty to add a
+variable or filled in to change one; it says what is wrong with the text
+while you type, and Enter applies it once nothing is. A new name there
+renames the variable everywhere it is used. The cross removes one, as
+it does your functions, and a badge counts the entries, functions and
+graph curves using each. The keypad
 (Ctrl+K), part of the Calculator tab, has the digits, operators and
 common functions for clicking.
 

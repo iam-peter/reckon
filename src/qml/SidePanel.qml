@@ -59,8 +59,10 @@ ColumnLayout {
             monoFont: panel.monoFont
             uiFont: panel.uiFont
             removable: true
-            editHandler: (name, text) => panel.calculator.setVariable(name, text)
+            counted: true
+            checkHandler: (text, current) => panel.calculator.checkVariable(text, current)
             addHandler: text => panel.calculator.addVariable(text)
+            editHandler: (name, text) => panel.calculator.changeVariable(name, text)
             onEditingFinished: panel.editingFinished()
             placeholder: qsTr("Search variables")
             onInsertRequested: text => panel.insertRequested(text)

@@ -368,36 +368,144 @@ void Calculator::clearVariables()
     namesChanged(QSet<QString>(names.cbegin(), names.cend()));
 }
 
-QString Calculator::addVariable(const QString &text)
+// "name = expression": the name and the expression, or an error.
+static QString splitAssignment(const QString &text, const FunctionPredicate &isFunction, QString *name,
+                               QString *expression)
 {
-    if (m_sheet.isEvaluating())
-        return u"The history is updating"_s;
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty())
+        return u"Expected a name, = and its value"_s;
     Statement statement;
     try {
-        statement = parseStatement(text.trimmed(), functionPredicate());
+        statement = parseStatement(trimmed, isFunction);
     } catch (const CalcError &error) {
         return error.message;
     }
     if (statement.isDefinition() || statement.targets.size() != 1)
         return u"Expected a name, = and its value"_s;
-    const QString name = statement.targets.first().name;
+    *name = statement.targets.first().name;
+    *expression = trimmed.mid(trimmed.indexOf(u'=') + 1).trimmed();
+    return {};
+}
+
+QString Calculator::checkVariable(const QString &text, const QString &current) const
+{
+    QString name;
+    QString expression;
+    if (const QString error = splitAssignment(text, functionPredicate(), &name, &expression); !error.isEmpty())
+        return error;
     if (name == u"ans"_s || isResultName(name) || Environment::isConstant(name) || findBuiltinFunction(name))
         return u"%1 cannot be a variable"_s.arg(name);
-    if (m_env.isFunction(name))
-        return u"%1 is a function"_s.arg(name);
-    if (m_env.hasVariable(name))
-        return u"%1 is a variable already"_s.arg(name);
+    if (name != current) {
+        if (m_env.isFunction(name))
+            return u"%1 is a function"_s.arg(name);
+        if (m_env.hasVariable(name))
+            return u"%1 is a variable already"_s.arg(name);
+    }
+    const QSet<QString> uses = Worksheet::referencedNames(expression);
+    if (!current.isEmpty() && name != current) {
+        // A rename: the old name is gone once it is done.
+        if (uses.contains(current))
+            return u"%1 is the name being changed"_s.arg(current);
+        if (name == u"x"_s) {
+            for (const QString &curve : m_curves) {
+                if (Worksheet::referencedNames(curve).contains(current))
+                    return u"x is what the curves are plotted over"_s;
+            }
+        }
+        // A parameter of the new name would take the references over.
+        for (const Worksheet::Entry &entry : m_sheet.entries()) {
+            if (Worksheet::parametersOf(entry.source).contains(name)
+                && Worksheet::referencedNames(entry.source).contains(current)) {
+                return u"%1 is a parameter of %2"_s.arg(name, entry.names.value(0));
+            }
+        }
+        const auto &functions = m_env.userFunctions();
+        for (auto it = functions.cbegin(); it != functions.cend(); ++it) {
+            if (it->parameters.contains(name) && Worksheet::referencedNames(it->source).contains(current))
+                return u"%1 is a parameter of %2"_s.arg(name, it.key());
+        }
+    } else if (!current.isEmpty() && m_sheet.ownerIndex(current) >= 0 && uses.contains(current)) {
+        return u"%1 depends on itself"_s.arg(current);
+    }
     try {
         Environment scratch = m_env;
-        const Number value = statement.value->evaluate(scratch);
-        if (!std::isfinite(value))
+        const Number value = parseExpression(expression, functionPredicate())->evaluate(scratch);
+        if (std::isnan(value))
             return u"Not a number"_s;
+        if (std::isinf(value))
+            return u"Result is too large"_s;
     } catch (const CalcError &error) {
         return error.message;
     }
-    // A binding like any other, in the history.
-    evaluate(u"%1 = %2"_s.arg(name, text.trimmed().mid(text.trimmed().indexOf(u'=') + 1).trimmed()));
     return {};
+}
+
+QString Calculator::addVariable(const QString &text)
+{
+    if (m_sheet.isEvaluating())
+        return u"The history is updating"_s;
+    if (const QString error = checkVariable(text); !error.isEmpty())
+        return error;
+    QString name;
+    QString expression;
+    splitAssignment(text, functionPredicate(), &name, &expression);
+    // A binding like any other, in the history.
+    evaluate(u"%1 = %2"_s.arg(name, expression));
+    return {};
+}
+
+QString Calculator::changeVariable(const QString &current, const QString &text)
+{
+    if (m_sheet.isEvaluating())
+        return u"The history is updating"_s;
+    if (!m_env.hasVariable(current) || current == u"ans"_s)
+        return u"%1 is not a variable"_s.arg(current);
+    if (const QString error = checkVariable(text, current); !error.isEmpty())
+        return error;
+    QString name;
+    QString expression;
+    splitAssignment(text, functionPredicate(), &name, &expression);
+    if (name != current)
+        renameVariable(current, name);
+    if (expression == (m_sheet.ownerIndex(name) >= 0 ? m_sheet.valueSource(m_sheet.ownerIndex(name)) : QString())) {
+        finish({});
+        return {};
+    }
+    return setVariable(name, expression);
+}
+
+// Every entry assigning or using the variable, the functions using it
+// and, through variableRenamed, the curves call it by its new name.
+void Calculator::renameVariable(const QString &from, const QString &to)
+{
+    for (int i = 0; i < m_sheet.size(); ++i) {
+        const QString &source = m_sheet.entries()[i].source;
+        if (m_sheet.entries()[i].definesFunction && Worksheet::parametersOf(source).contains(from))
+            continue;
+        const QString renamed = Worksheet::renameVariable(source, from, to);
+        if (renamed != source)
+            m_sheet.edit(i, renamed);
+    }
+    if (m_env.variables().contains(from)) {
+        const Number value = m_env.variables().value(from);
+        m_env.removeVariable(from);
+        m_env.setVariable(to, value);
+    }
+    const auto functions = m_env.userFunctions();
+    for (auto it = functions.cbegin(); it != functions.cend(); ++it) {
+        if (it->parameters.contains(from))
+            continue;
+        const QString body = Worksheet::renameVariable(it->source, from, to);
+        if (body == it->source)
+            continue;
+        try {
+            m_env.defineFunction(it.key(), {it->parameters, parseExpression(body, functionPredicate()), body});
+        } catch (const CalcError &) {
+        }
+    }
+    emit variableRenamed(from, to);
+    namesChanged({from, to});
 }
 
 void Calculator::setCurveExpressions(const QStringList &expressions)

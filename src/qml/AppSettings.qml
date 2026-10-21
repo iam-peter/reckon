@@ -27,7 +27,7 @@ QtObject {
         property bool sidePanel: true
         property int sideTab: 0
         property int page: 0 // the tab: calculator, graph, script
-        property real sideWidth: 260
+        property real sideWidth: 300
     }
 
     readonly property Settings fonts: Settings {
