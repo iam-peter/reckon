@@ -1,6 +1,7 @@
 #include "Environment.h"
 
 #include "Functions.h"
+#include "Lexer.h"
 
 #include <QtMath>
 
@@ -32,6 +33,12 @@ Number Environment::variable(const QString &name, int position) const
         if (it != frame->cend())
             return *it;
     }
+    note(name);
+    if (m_scope && m_scope->owns(name)) {
+        if (!m_scope->isVariable(name))
+            throw CalcError{u"%1 is a function"_s.arg(name), position};
+        return m_scope->variable(name, position);
+    }
     const auto it = m_variables.constFind(name);
     if (it != m_variables.cend())
         return *it;
@@ -44,11 +51,20 @@ Number Environment::variable(const QString &name, int position) const
 
 bool Environment::hasVariable(const QString &name) const
 {
+    note(name);
+    if (m_scope && m_scope->owns(name))
+        return m_scope->isVariable(name);
     return m_variables.contains(name) || isConstant(name);
 }
 
 void Environment::assign(const QString &name, Number value, int position)
 {
+    if (isResultName(name))
+        throw CalcError{u"%1 cannot be assigned"_s.arg(name), position};
+    if (m_scope && m_scope->isEvaluating())
+        throw CalcError{u"%1 can only be assigned at the start"_s.arg(name), position};
+    if (m_scope && m_scope->owns(name))
+        throw CalcError{u"%1 is defined by %2"_s.arg(name, m_scope->owner(name)), position};
     if (isConstant(name))
         throw CalcError{u"%1 is a constant"_s.arg(name), position};
     if (isFunction(name))
@@ -58,6 +74,9 @@ void Environment::assign(const QString &name, Number value, int position)
 
 bool Environment::isFunction(const QString &name) const
 {
+    note(name);
+    if (m_scope && m_scope->owns(name))
+        return m_scope->isFunction(name);
     return m_userFunctions.contains(name) || m_scriptFunctions.contains(name) || isBuiltinFunction(name);
 }
 
@@ -84,8 +103,19 @@ void Environment::defineScriptFunction(const QString &name, const ScriptFunction
 
 Number Environment::call(const QString &name, const QList<Number> &arguments, int position)
 {
-    if (const auto it = m_userFunctions.constFind(name); it != m_userFunctions.cend()) {
-        const UserFunction &function = *it;
+    note(name);
+    const UserFunction *user = nullptr;
+    if (m_scope && m_scope->owns(name)) {
+        if (!m_scope->isFunction(name))
+            throw CalcError{u"%1 is a variable"_s.arg(name), position};
+        user = &m_scope->function(name, position);
+    } else if (const auto it = m_userFunctions.constFind(name); it != m_userFunctions.cend()) {
+        user = &*it;
+    }
+    if (user) {
+        // A copy: the history may evaluate the entry that defines the
+        // function again while the body runs, replacing it.
+        const UserFunction function = *user;
         if (arguments.size() != function.parameters.size())
             throw CalcError{u"%1 takes %2"_s.arg(name, argumentCount(int(function.parameters.size()))), position};
         if (m_frames.size() >= MaxCallDepth)
@@ -155,11 +185,13 @@ Number Environment::evaluateWith(const ExprPtr &expr, const QString &name, Numbe
 
 Number Environment::toRadians(Number angle) const
 {
+    note(u"#angle"_s);
     return angleUnit == AngleUnit::Degrees ? qDegreesToRadians(angle) : angle;
 }
 
 Number Environment::fromRadians(Number radians) const
 {
+    note(u"#angle"_s);
     return angleUnit == AngleUnit::Degrees ? qRadiansToDegrees(radians) : radians;
 }
 

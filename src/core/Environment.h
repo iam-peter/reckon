@@ -9,6 +9,7 @@
 #include <QStringList>
 
 #include <functional>
+#include <utility>
 
 enum class AngleUnit { Radians, Degrees };
 
@@ -25,6 +26,33 @@ struct ScriptFunction
 {
     int arity = -1; // -1: any number of arguments
     std::function<Number(const QList<Number> &)> call;
+};
+
+// The names the history binds: `$3`, `ans`, and the variables and
+// functions its entries define, which take precedence over the
+// environment's own. An entry being evaluated depends on every name its
+// evaluation touches, and the scope hears of each through note().
+class BindingScope
+{
+public:
+    virtual ~BindingScope() = default;
+
+    // A name the expression being evaluated depends on, whether it exists
+    // or not, so the expression updates once it does.
+    virtual void note(const QString &name) = 0;
+    // True if the scope has `name`; then it decides what the name is.
+    virtual bool owns(const QString &name) const = 0;
+    virtual bool isVariable(const QString &name) const = 0;
+    virtual bool isFunction(const QString &name) const = 0;
+    // The value or the function of a name the scope owns. Throws when the
+    // entry behind it has an error or the names depend on each other.
+    virtual Number variable(const QString &name, int position) = 0;
+    virtual const UserFunction &function(const QString &name, int position) = 0;
+    // The entry that owns `name`, "$3", to say where to change it.
+    virtual QString owner(const QString &name) const = 0;
+    // While an entry is evaluated: assignments inside an expression would
+    // change a binding behind the history's back.
+    virtual bool isEvaluating() const = 0;
 };
 
 // The variables, the functions the user and scripts defined and the
@@ -81,7 +109,22 @@ public:
     // Bitwise operators work on integers; anything else is an error.
     static qint64 toInteger(Number value, int position = -1);
 
+    // The history's names, looked up before the environment's own.
+    BindingScope *scope() const { return m_scope; }
+    void setScope(BindingScope *scope) { m_scope = scope; }
+    // The history evaluates an entry with the frames of a call that asked
+    // for its value set aside, so parameters never leak into it.
+    QList<QHash<QString, Number>> takeFrames() { return std::exchange(m_frames, {}); }
+    void restoreFrames(QList<QHash<QString, Number>> frames) { m_frames = std::move(frames); }
+
 private:
+    void note(const QString &name) const
+    {
+        if (m_scope)
+            m_scope->note(name);
+    }
+
+    BindingScope *m_scope = nullptr;
     QHash<QString, Number> m_variables;
     QHash<QString, UserFunction> m_userFunctions;
     QHash<QString, ScriptFunction> m_scriptFunctions;

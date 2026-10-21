@@ -4,6 +4,7 @@
 #include "Formatter.h"
 #include "Models.h"
 #include "ScriptEngine.h"
+#include "Worksheet.h"
 
 #include <QObject>
 #include <QUrl>
@@ -12,7 +13,8 @@
 
 // The calculator QML talks to: evaluates what is typed into the history,
 // keeps the variables and functions, formats results, and saves and
-// loads sessions.
+// loads sessions. The history is live (see Worksheet): `$3` is entry 3's
+// result, and editing an entry updates every entry that depends on it.
 class Calculator : public QObject
 {
     Q_OBJECT
@@ -61,6 +63,11 @@ public:
     // Evaluates into the history and `ans`. False on an error, which is in
     // the history too.
     Q_INVOKABLE bool evaluate(const QString &expression);
+    // Replaces entry `row` of the history with `expression` and updates
+    // whatever depends on it. False when it has an error then. Empty text
+    // removes the entry.
+    Q_INVOKABLE bool edit(int row, const QString &expression);
+    Q_INVOKABLE void removeEntry(int row);
     // The result the expression would give, formatted, without changing
     // anything: empty on an error or for a definition.
     Q_INVOKABLE QString preview(const QString &expression) const;
@@ -89,8 +96,11 @@ public:
     static QString stateFile();
 
     Environment &environment() { return m_env; }
+    const Worksheet &worksheet() const { return m_sheet; }
     // The lists follow the environment; after a script defined functions.
     void refreshLists();
+    // A script changed these names: the entries reading them update.
+    void namesChanged(const QSet<QString> &names);
 
 signals:
     void evaluated(bool ok);
@@ -103,9 +113,13 @@ private:
     void refreshUserFunctions();
     void refreshFunctions();
     void setSessionFile(const QString &file);
+    // The history model follows the worksheet.
+    void syncHistory();
+    HistoryEntry historyEntry(int index) const;
     FunctionPredicate functionPredicate() const;
 
     Environment m_env;
+    Worksheet m_sheet;
     NumberFormat m_format;
     HistoryModel *m_history;
     NameListModel *m_variables;

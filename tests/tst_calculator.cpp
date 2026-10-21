@@ -8,6 +8,25 @@
 
 using namespace Qt::StringLiterals;
 
+namespace {
+
+QString resultAt(const Calculator &calc, int row)
+{
+    return calc.history()->resultAt(row);
+}
+
+QString errorAt(const Calculator &calc, int row)
+{
+    return calc.history()->data(calc.history()->index(row), HistoryModel::ErrorRole).toString();
+}
+
+QVariant roleAt(const Calculator &calc, int row, int role)
+{
+    return calc.history()->data(calc.history()->index(row), role);
+}
+
+} // namespace
+
 class TestCalculator : public QObject
 {
     Q_OBJECT
@@ -43,8 +62,12 @@ private slots:
                  u"f(x)"_s);
         QVERIFY(calc.evaluate(u"f(4)"_s));
         QCOMPARE(calc.ans(), u"8"_s);
+        // The entry defines f; the list cannot take it away from it.
         calc.removeUserFunction(u"f"_s);
-        QVERIFY(!calc.evaluate(u"f(4)"_s));
+        QVERIFY(calc.evaluate(u"f(4)"_s));
+        calc.removeEntry(0);
+        QCOMPARE(calc.userFunctions()->count(), 0);
+        QCOMPARE(errorAt(calc, 0), u"Unknown function f"_s);
     }
 
     void previewChangesNothing()
@@ -73,10 +96,172 @@ private slots:
         variables->setFilter(u"al"_s);
         QCOMPARE(variables->count(), 1);
         variables->setFilter({});
+        // Bound by entries, which say so, and stay until those change.
+        QCOMPARE(variables->data(variables->index(3), NameListModel::DescriptionRole).toString(),
+                 u"Defined by $2"_s);
+        QVERIFY(variables->data(variables->index(3), NameListModel::BuiltinRole).toBool());
         calc.removeVariable(u"alpha"_s);
-        QCOMPARE(variables->count(), 4);
         calc.clearVariables();
-        QCOMPARE(variables->count(), 3);
+        QCOMPARE(variables->count(), 5);
+        // Variables a script set are the environment's own.
+        QVERIFY(calc.script()->run(u"calc.set('delta', 3)"_s));
+        QCOMPARE(variables->count(), 6);
+        QVERIFY(!variables->data(variables->index(5), NameListModel::BuiltinRole).toBool());
+        calc.removeVariable(u"delta"_s);
+        QCOMPARE(variables->count(), 5);
+        calc.removeEntry(1);
+        QCOMPARE(variables->count(), 4);
+    }
+
+    void editsUpdateWhatDependsOnThem()
+    {
+        Calculator calc;
+        calc.evaluate(u"a = 3"_s);
+        calc.evaluate(u"b = a * 2"_s);
+        calc.evaluate(u"$2 + 1"_s);
+        calc.evaluate(u"10"_s);
+        QCOMPARE(resultAt(calc, 2), u"7"_s);
+        QCOMPARE(roleAt(calc, 2, HistoryModel::NameRole).toString(), u"$3"_s);
+        QVERIFY(calc.edit(0, u"a = 5"_s));
+        QCOMPARE(resultAt(calc, 0), u"5"_s);
+        QCOMPARE(resultAt(calc, 1), u"10"_s);
+        QCOMPARE(resultAt(calc, 2), u"11"_s);
+        // The entries that followed say so; the one edited and the one
+        // that does not depend on it do not.
+        QCOMPARE(roleAt(calc, 0, HistoryModel::RevisionRole).toInt(), 0);
+        QCOMPARE(roleAt(calc, 1, HistoryModel::RevisionRole).toInt(), 1);
+        QCOMPARE(roleAt(calc, 2, HistoryModel::RevisionRole).toInt(), 1);
+        QCOMPARE(roleAt(calc, 3, HistoryModel::RevisionRole).toInt(), 0);
+        // Names stay with their entries.
+        QCOMPARE(roleAt(calc, 2, HistoryModel::NameRole).toString(), u"$3"_s);
+        QVERIFY(!calc.edit(1, u"b = a / 0"_s));
+        QCOMPARE(errorAt(calc, 1), u"Division by zero"_s);
+        QCOMPARE(errorAt(calc, 2), u"$2 has an error"_s);
+        QCOMPARE(roleAt(calc, 2, HistoryModel::ErrorPositionRole).toInt(), 0);
+        QVERIFY(!calc.evaluate(u"$9"_s));
+        QCOMPARE(errorAt(calc, 4), u"There is no $9"_s);
+    }
+
+    void latestAssignmentWins()
+    {
+        Calculator calc;
+        calc.evaluate(u"x = 1"_s);
+        calc.evaluate(u"y = x * 2"_s);
+        QCOMPARE(resultAt(calc, 1), u"2"_s);
+        calc.evaluate(u"x = 5"_s);
+        QCOMPARE(resultAt(calc, 1), u"10"_s);
+        QCOMPARE(roleAt(calc, 0, HistoryModel::ReplacedRole).toString(), u"x is redefined in $3"_s);
+        QCOMPARE(roleAt(calc, 2, HistoryModel::ReplacedRole).toString(), QString());
+        // Taking the later assignment back gives x to the earlier one again.
+        calc.edit(2, u"z = 0"_s);
+        QCOMPARE(resultAt(calc, 1), u"2"_s);
+        QCOMPARE(roleAt(calc, 0, HistoryModel::ReplacedRole).toString(), QString());
+        // Order does not matter: a name defined further down binds too.
+        QVERIFY(!calc.evaluate(u"w = v + 1"_s));
+        QCOMPARE(errorAt(calc, 3), u"Unknown variable v"_s);
+        calc.evaluate(u"v = 41"_s);
+        QCOMPARE(resultAt(calc, 3), u"42"_s);
+        // So does a name that turns from a function into a variable.
+        calc.evaluate(u"g(t) = t + 1"_s);
+        calc.evaluate(u"g(1)"_s);
+        QCOMPARE(resultAt(calc, 6), u"2"_s);
+        calc.edit(5, u"g = 4"_s);
+        QCOMPARE(resultAt(calc, 6), u"4"_s); // g times 1
+    }
+
+    void bindingLoopsAreErrors()
+    {
+        Calculator calc;
+        QVERIFY(!calc.evaluate(u"x = x + 1"_s));
+        QCOMPARE(errorAt(calc, 0), u"x depends on itself"_s);
+        calc.evaluate(u"a = b + 1"_s);
+        calc.evaluate(u"b = a + 1"_s);
+        QCOMPARE(errorAt(calc, 1), u"Binding loop: a → b → a"_s);
+        QCOMPARE(errorAt(calc, 2), u"Binding loop: a → b → a"_s);
+        calc.evaluate(u"c = a * 2"_s);
+        QCOMPARE(errorAt(calc, 3), u"a has an error"_s);
+        calc.edit(2, u"b = 2"_s);
+        QCOMPARE(resultAt(calc, 1), u"3"_s);
+        QCOMPARE(resultAt(calc, 3), u"6"_s);
+        // Through entry names and functions too.
+        calc.evaluate(u"$7 + 1"_s);
+        calc.evaluate(u"f(t) = t + $5"_s);
+        calc.evaluate(u"f(1)"_s);
+        QCOMPARE(errorAt(calc, 4), u"Binding loop: $5 → $7 → $5"_s);
+        // Assigning inside an expression would bind behind the history's back.
+        QVERIFY(!calc.evaluate(u"1 + (y = 2)"_s));
+        QCOMPARE(errorAt(calc, 7), u"y can only be assigned at the start"_s);
+    }
+
+    void ansIsTheEntryAbove()
+    {
+        Calculator calc;
+        calc.evaluate(u"2"_s);
+        calc.evaluate(u"1 / 0"_s);
+        calc.evaluate(u"f(x) = x"_s);
+        calc.evaluate(u"ans * 3"_s);
+        QCOMPARE(resultAt(calc, 3), u"6"_s);
+        calc.edit(0, u"5"_s);
+        QCOMPARE(resultAt(calc, 3), u"15"_s);
+        calc.edit(1, u"1 / 2"_s);
+        QCOMPARE(resultAt(calc, 3), u"1.5"_s);
+        QCOMPARE(calc.ans(), u"1.5"_s);
+    }
+
+    void unchangedEntriesKeepTheirValues()
+    {
+        Calculator calc;
+        calc.evaluate(u"r = random()"_s);
+        calc.evaluate(u"s = 1"_s);
+        calc.evaluate(u"r + s"_s);
+        const double r = roleAt(calc, 0, HistoryModel::ValueRole).toDouble();
+        calc.edit(1, u"s = 2"_s);
+        QCOMPARE(roleAt(calc, 0, HistoryModel::ValueRole).toDouble(), r);
+        QCOMPARE(roleAt(calc, 2, HistoryModel::ValueRole).toDouble(), r + 2);
+        calc.evaluate(u"1 + 1"_s);
+        QCOMPARE(roleAt(calc, 0, HistoryModel::ValueRole).toDouble(), r);
+    }
+
+    void functionsBindToo()
+    {
+        Calculator calc;
+        calc.evaluate(u"k = 2"_s);
+        calc.evaluate(u"f(x) = x * k"_s);
+        calc.evaluate(u"f(3)"_s);
+        QCOMPARE(resultAt(calc, 2), u"6"_s);
+        calc.edit(0, u"k = 10"_s);
+        QCOMPARE(resultAt(calc, 2), u"30"_s);
+        calc.edit(1, u"f(x) = x + k"_s);
+        QCOMPARE(resultAt(calc, 2), u"13"_s);
+        // A parameter never reaches an entry the body reads.
+        calc.evaluate(u"m = x"_s);
+        calc.evaluate(u"h(x) = m"_s);
+        QVERIFY(!calc.evaluate(u"h(1)"_s));
+        QCOMPARE(errorAt(calc, 5), u"m has an error"_s);
+        QCOMPARE(errorAt(calc, 3), u"Unknown variable x"_s);
+        // Entries with angles follow the unit.
+        calc.evaluate(u"sin(pi / 2)"_s);
+        QCOMPARE(resultAt(calc, 6), u"1"_s);
+        calc.setAngleUnit(Calculator::Degrees);
+        QCOMPARE(resultAt(calc, 6), u"0.0274121335920443"_s);
+    }
+
+    void clearingTheHistoryKeepsWhatItDefined()
+    {
+        Calculator calc;
+        calc.evaluate(u"x = 3"_s);
+        calc.evaluate(u"f(a) = a * x"_s);
+        calc.evaluate(u"7"_s);
+        calc.clearHistory();
+        QCOMPARE(calc.history()->count(), 0);
+        QVERIFY(calc.isVariable(u"x"_s));
+        QCOMPARE(calc.ans(), u"7"_s);
+        QVERIFY(calc.evaluate(u"f(2)"_s));
+        QCOMPARE(calc.ans(), u"6"_s);
+        // Plain values again, which the list can remove.
+        calc.removeUserFunction(u"f"_s);
+        QVERIFY(!calc.evaluate(u"f(2)"_s));
+        QCOMPARE(roleAt(calc, 0, HistoryModel::NameRole).toString(), u"$1"_s);
     }
 
     void formatsFollowSettings()
@@ -128,6 +313,18 @@ private slots:
                  u"Division by zero"_s);
         QVERIFY(other.evaluate(u"f(2)"_s));
         QCOMPARE(other.ans(), u"3.5"_s);
+        // Still bound after loading, under the same names.
+        QCOMPARE(roleAt(other, 4, HistoryModel::NameRole).toString(), u"$5"_s);
+        other.edit(0, u"x = 10"_s);
+        QCOMPARE(resultAt(other, 2), u"11"_s);
+        QCOMPARE(resultAt(other, 4), u"12"_s);
+        // Version 1 sessions saved the bound names as plain ones too.
+        Calculator old;
+        QVERIFY(old.loadSessionJson(uR"({"version": 1, "variables": {"x": 1.5, "ans": 2.5},
+            "history": [{"expression": "x = 1.5", "value": 1.5}, {"expression": "x * 2", "value": 3}]})"_s));
+        QCOMPARE(old.variables()->count(), 4);
+        old.edit(0, u"x = 4"_s);
+        QCOMPARE(resultAt(old, 1), u"8"_s);
 
         QTemporaryDir dir;
         const QUrl file = QUrl::fromLocalFile(dir.filePath(u"session.json"_s));
@@ -162,6 +359,39 @@ private slots:
         QVERIFY(script->output().contains(u"pi is a constant"_s));
         QCOMPARE(script->run(u"calc.history().length"_s), true);
         QVERIFY(script->output().endsWith(u"2\n"_s));
+        // A bound name changes through its entry only.
+        script->clearOutput();
+        QVERIFY(!script->run(u"calc.set('x', 3)"_s));
+        QVERIFY(script->output().contains(u"x is defined by $1"_s));
+    }
+
+    void scriptsTakePartInBindings()
+    {
+        Calculator calc;
+        ScriptEngine *script = calc.script();
+        // What a script function reads is a dependency like any other.
+        QVERIFY(script->run(u"calc.define('twice', () => 2 * calc.get('k'), 0)"_s));
+        calc.evaluate(u"k = 2"_s);
+        calc.evaluate(u"twice()"_s);
+        QCOMPARE(resultAt(calc, 1), u"4"_s);
+        calc.edit(0, u"k = 5"_s);
+        QCOMPARE(resultAt(calc, 1), u"10"_s);
+        // Defining a function a script uses updates the entries using it.
+        QVERIFY(!calc.evaluate(u"later(1)"_s));
+        QVERIFY(script->run(u"calc.define('later', x => x + 1)"_s));
+        QCOMPARE(resultAt(calc, 2), u"2"_s);
+        // And so does a variable a script sets.
+        QVERIFY(!calc.evaluate(u"p * 2"_s));
+        QVERIFY(script->run(u"calc.set('p', 4)"_s));
+        QCOMPARE(resultAt(calc, 3), u"8"_s);
+        QVERIFY(script->run(u"calc.eval('p = 5')"_s));
+        QCOMPARE(resultAt(calc, 3), u"10"_s);
+        // A script function the history calls cannot change it meanwhile.
+        QVERIFY(script->run(u"calc.define('meddle', () => { calc.set('q', 1); return 1 }, 0)"_s));
+        QVERIFY(!calc.evaluate(u"meddle()"_s));
+        QVERIFY(errorAt(calc, 4).contains(u"cannot change anything while the history updates"_s));
+        QVERIFY(!script->run(u"calc.define('k', x => x)"_s));
+        QVERIFY(script->output().contains(u"k is defined by $1"_s));
     }
 
     void scriptsDefineFunctions()

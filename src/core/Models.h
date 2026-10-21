@@ -10,12 +10,19 @@
 // What was typed and what came of it, oldest first.
 struct HistoryEntry
 {
+    int id = 0; // the result is `$id`
     QString expression;
     Number value = 0;
     QString result; // the value as formatted, or empty for an error
     QString error;
     int errorPosition = -1;
     bool definition = false; // `f(x) = ...`: the result is the definition, not a number
+    // "x is redefined in $7": a later entry took over what this one defines.
+    QString replaced;
+    // Goes up whenever a change elsewhere changed the result.
+    int revision = 0;
+
+    bool operator==(const HistoryEntry &) const = default;
 };
 
 class HistoryModel : public QAbstractListModel
@@ -26,7 +33,10 @@ class HistoryModel : public QAbstractListModel
     Q_PROPERTY(int count READ count NOTIFY countChanged)
 
 public:
-    enum Role { ExpressionRole = Qt::UserRole + 1, ValueRole, ResultRole, ErrorRole, ErrorPositionRole, IsErrorRole };
+    enum Role {
+        ExpressionRole = Qt::UserRole + 1, ValueRole, ResultRole, ErrorRole, ErrorPositionRole, IsErrorRole,
+        NameRole, IsDefinitionRole, ReplacedRole, RevisionRole,
+    };
 
     using QAbstractListModel::QAbstractListModel;
 
@@ -38,6 +48,10 @@ public:
     void append(const HistoryEntry &entry);
     void clear();
     void setEntries(const QList<HistoryEntry> &entries);
+    // Brings the rows in line with `entries`, matched by id: rows are
+    // removed, inserted and changed rather than the model reset, so the
+    // views keep their place.
+    void sync(const QList<HistoryEntry> &entries);
     const QList<HistoryEntry> &entries() const { return m_entries; }
     // Rewrites every result after the number format changed.
     void reformat(const std::function<QString(Number)> &format);

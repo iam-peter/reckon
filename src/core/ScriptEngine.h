@@ -72,6 +72,9 @@ public:
     Q_INVOKABLE void print(const QString &text);
 
 private:
+    // Throws a JavaScript error, and says so, while the history updates.
+    bool busy(const QString &what);
+
     Calculator *m_calculator;
     ScriptEngine *m_engine;
     QJSEngine *m_js;

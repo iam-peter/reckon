@@ -7,6 +7,7 @@
 
 #include <QDir>
 #include <QGuiApplication>
+#include <QStyleHints>
 #include <QQmlApplicationEngine>
 #include <QQuickItem>
 #include <QQuickStyle>
@@ -172,6 +173,91 @@ private slots:
         screenshot(window, u"script"_s);
         toolTabs->setProperty("currentIndex", 0);
         QTest::keyClick(window, Qt::Key_Escape);
+
+        // A later assignment takes the name over; the earlier entry says so.
+        type(window, u"x = 7"_s);
+        QTest::keyClick(window, Qt::Key_Return);
+        QTRY_COMPARE(calc->history()->count(), 9);
+        QCOMPARE(calc->history()->data(calc->history()->index(0), HistoryModel::ReplacedRole).toString(),
+                 u"x is redefined in $9"_s);
+        QVERIFY(QMetaObject::invokeMethod(calc, "removeEntry", Q_ARG(int, 8)));
+        QTRY_COMPARE(calc->history()->count(), 8);
+        // The editor keeps the focus while the row goes.
+        QTest::qWait(50);
+        QVERIFY(editor->property("inputFocused").toBool());
+
+        // A double-click edits an entry in place; Enter updates it and
+        // what depends on it, and the editor takes over again.
+        auto *display = window->findChild<QQuickItem *>(u"display"_s);
+        QVERIFY(display);
+        QVERIFY(QMetaObject::invokeMethod(display, "positionViewAtBeginning"));
+        QQuickItem *first = nullptr;
+        QTRY_VERIFY(QMetaObject::invokeMethod(display, "itemAtIndex", Q_RETURN_ARG(QQuickItem *, first),
+                                              Q_ARG(int, 0))
+                    && first);
+        QQuickItem *expressionText = nullptr;
+        QQuickItem *resultText = nullptr;
+        for (QQuickItem *item : first->findChildren<QQuickItem *>()) {
+            if (item->property("text").toString() == u"x = 2 + 3"_s && !expressionText)
+                expressionText = item;
+            if (item->property("text").toString() == u"5"_s && !resultText)
+                resultText = item;
+        }
+        QVERIFY(expressionText);
+        QVERIFY(resultText);
+        type(window, u"10 + "_s);
+        QTest::mouseClick(window, Qt::LeftButton, {}, resultText->mapToScene({resultText->width() - 4, 6}).toPoint());
+        // A click on a result binds to it by name.
+        QTRY_COMPARE(editor->property("text").toString(), u"10 + $1"_s);
+        QTest::keyClick(window, Qt::Key_Return);
+        QTRY_COMPARE(calc->history()->count(), 9);
+        QCOMPARE(calc->history()->resultAt(8), u"15"_s);
+        // The new entry scrolled the view to the end, after a moment.
+        QTest::qWait(50);
+        QVERIFY(QMetaObject::invokeMethod(display, "positionViewAtBeginning"));
+        QTRY_VERIFY(display->property("atYBeginning").toBool());
+        const qreal rowHeight = first->height();
+        QTest::mouseDClick(window, Qt::LeftButton, {}, expressionText->mapToScene({4, 6}).toPoint());
+        auto *entryEditor = first->findChild<QQuickItem *>(u"entryEditor"_s);
+        QVERIFY(entryEditor);
+        QTRY_VERIFY(entryEditor->hasActiveFocus());
+        QCOMPARE(entryEditor->property("text").toString(), u"x = 2 + 3"_s);
+        // The editor takes the expression's place without moving the rows
+        // below, also while the change gives no result yet.
+        QCOMPARE(entryEditor->height(), expressionText->height());
+        QCOMPARE(first->height(), rowHeight);
+        type(window, u"x = "_s);
+        QTest::qWait(20);
+        QCOMPARE(first->height(), rowHeight);
+        QTest::keyClick(window, Qt::Key_A, Qt::ControlModifier);
+        type(window, u"x = 4"_s);
+        QTest::keyClick(window, Qt::Key_Return);
+        QTRY_COMPARE(calc->history()->resultAt(0), u"4"_s);
+        QCOMPARE(calc->history()->resultAt(8), u"14"_s);
+        QVERIFY(!entryEditor->isVisible());
+        QTRY_VERIFY(editor->property("inputFocused").toBool());
+        // Escape leaves the entry as it was. A double-click right after
+        // the last one would count as part of it.
+        QTest::qWait(QGuiApplication::styleHints()->mouseDoubleClickInterval() + 50);
+        QTest::mouseDClick(window, Qt::LeftButton, {}, expressionText->mapToScene({4, 6}).toPoint());
+        QTRY_VERIFY(entryEditor->hasActiveFocus());
+        type(window, u"x = 100"_s);
+        QTest::qWait(50);
+        screenshot(window, u"edit"_s);
+        QTest::keyClick(window, Qt::Key_Escape);
+        QTRY_VERIFY(!entryEditor->isVisible());
+        QCOMPARE(calc->history()->expressionAt(0), u"x = 4"_s);
+        // Nor does an entry with an error, whose message is smaller.
+        QQuickItem *second = nullptr;
+        QVERIFY(QMetaObject::invokeMethod(display, "itemAtIndex", Q_RETURN_ARG(QQuickItem *, second), Q_ARG(int, 1)));
+        QVERIFY(second);
+        const qreal errorRowHeight = second->height();
+        QVERIFY(QMetaObject::invokeMethod(display, "edit", Q_ARG(int, 1)));
+        auto *errorEditor = second->findChild<QQuickItem *>(u"entryEditor"_s);
+        QTRY_VERIFY(errorEditor->hasActiveFocus());
+        QCOMPARE(second->height(), errorRowHeight);
+        QTest::keyClick(window, Qt::Key_Escape);
+        QTRY_VERIFY(!errorEditor->isVisible());
 
         window->close();
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.isEmpty() ? QString() : warnings.first().toString()));

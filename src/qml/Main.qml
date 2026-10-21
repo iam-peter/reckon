@@ -280,9 +280,14 @@ ApplicationWindow {
                 monoFont: root.monoFont
                 resultFont: root.resultFont
                 onInsertRequested: text => root.insert(text)
-                // Clicks on the display leave the editor in charge.
+                onEditingFinished: editor.focusInput()
+                // Clicks on the display leave the editor in charge, unless
+                // they edit an entry in place.
                 TapHandler {
-                    onTapped: editor.focusInput()
+                    onTapped: {
+                        if (!display.editing)
+                            editor.focusInput()
+                    }
                 }
             }
 

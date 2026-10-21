@@ -161,12 +161,16 @@ public:
     {
         Statement result;
         if (looksLikeDefinition()) {
+            if (isResultName(peek().text))
+                throw CalcError{u"%1 cannot be defined"_s.arg(peek().text), peek().position};
             result.functionName = take().text;
             take(); // (
             while (true) {
                 const Token &parameter = take();
                 if (parameter.type != Token::Identifier)
                     throw CalcError{u"Parameter name expected"_s, parameter.position};
+                if (isResultName(parameter.text))
+                    throw CalcError{u"%1 cannot be a parameter"_s.arg(parameter.text), parameter.position};
                 if (result.parameters.contains(parameter.text))
                     throw CalcError{u"Parameter %1 given twice"_s.arg(parameter.text), parameter.position};
                 result.parameters.append(parameter.text);
@@ -182,7 +186,21 @@ public:
             result.expr = expression();
             result.bodySource = m_text.mid(bodyStart).trimmed();
         } else {
-            result.expr = expression();
+            while (peek().type == Token::Identifier && peek(1).type == Token::Assign) {
+                result.targets.append({peek().text, peek().position});
+                take();
+                take();
+            }
+            result.value = expression();
+            // The assignments the targets stand for, innermost first.
+            result.expr = result.value;
+            for (auto target = result.targets.crbegin(); target != result.targets.crend(); ++target) {
+                auto node = std::make_shared<AssignExpr>();
+                node->position = target->position;
+                node->name = target->name;
+                node->value = result.expr;
+                result.expr = node;
+            }
         }
         if (peek().type != Token::End)
             throw CalcError{u"Unexpected %1"_s.arg(describe(peek())), peek().position};

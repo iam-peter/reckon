@@ -23,6 +23,13 @@ struct Expr
 
 using ExprPtr = std::shared_ptr<const Expr>;
 
+// A name a statement assigns, `x` in `x = 2`.
+struct AssignTarget
+{
+    QString name;
+    int position = 0;
+};
+
 // One line of input: an expression, which may assign variables along the
 // way, or the definition of a function `f(x, y) = body`.
 struct Statement
@@ -31,6 +38,11 @@ struct Statement
     QString functionName; // set for a definition
     QStringList parameters;
     QString bodySource; // the definition's body as typed, kept to show and save it
+    // `a = b = expr` at the start: a and b, and expr, which `expr` assigns
+    // to them when evaluated. The history binds the names to `value`
+    // instead, without assigning.
+    QList<AssignTarget> targets;
+    ExprPtr value;
 
     bool isDefinition() const { return !functionName.isEmpty(); }
 };

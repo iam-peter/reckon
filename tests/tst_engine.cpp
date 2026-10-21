@@ -64,6 +64,29 @@ private slots:
         QCOMPARE(tokens[7].text, u"!="_s);
     }
 
+    void lexesEntryNames()
+    {
+        const QList<Token> tokens = tokenize(u"$12x + $3"_s);
+        QCOMPARE(tokens[0].type, Token::Identifier);
+        QCOMPARE(tokens[0].text, u"$12"_s);
+        QCOMPARE(tokens[1].text, u"x"_s);
+        QCOMPARE(tokens[3].text, u"$3"_s);
+        QCOMPARE(errorOf(u"$3 = 1"_s), u"$3 cannot be assigned"_s);
+        QCOMPARE(errorOf(u"$1(x) = x"_s), u"$1 cannot be defined"_s);
+        QCOMPARE(errorOf(u"f($1) = 1"_s), u"$1 cannot be a parameter"_s);
+        QCOMPARE(errorOf(u"2 $"_s), u"Expected an entry number after $"_s);
+        // The assignments at the start, and what they assign.
+        const Statement statement = parseStatement(u"a = b = 2 + 1"_s);
+        QCOMPARE(statement.targets.size(), 2);
+        QCOMPARE(statement.targets[1].name, u"b"_s);
+        QCOMPARE(statement.targets[1].position, 4);
+        Environment env;
+        QCOMPARE(statement.value->evaluate(env), 3.0);
+        QVERIFY(!env.hasVariable(u"a"_s));
+        QCOMPARE(statement.expr->evaluate(env), 3.0);
+        QCOMPARE(env.variable(u"a"_s), 3.0);
+    }
+
     void lenientLexingMarksUnknownCharacters()
     {
         QVERIFY_THROWS_EXCEPTION(CalcError, tokenize(u"1 $ 2"_s));

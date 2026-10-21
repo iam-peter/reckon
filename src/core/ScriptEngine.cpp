@@ -63,8 +63,20 @@ double ScriptApi::ans() const
 double ScriptApi::eval(const QString &expression)
 {
     try {
-        const ExprPtr expr = parseExpression(expression, m_calculator->environment().callPredicate());
-        return expr->evaluate(m_calculator->environment());
+        Environment &env = m_calculator->environment();
+        const ExprPtr expr = parseExpression(expression, env.callPredicate());
+        const QHash<QString, Number> before = env.variables();
+        const Number value = expr->evaluate(env);
+        // Assignments inside: the entries reading those names follow.
+        if (env.variables() != before) {
+            QSet<QString> changed;
+            for (auto it = env.variables().cbegin(); it != env.variables().cend(); ++it) {
+                if (before.value(it.key(), std::nan("")) != it.value())
+                    changed.insert(it.key());
+            }
+            m_calculator->namesChanged(changed);
+        }
+        return value;
     } catch (const CalcError &error) {
         m_js->throwError(error.message);
         return std::nan("");
@@ -73,7 +85,19 @@ double ScriptApi::eval(const QString &expression)
 
 bool ScriptApi::run(const QString &expression)
 {
+    if (busy(u"calc.run"_s))
+        return false;
     return m_calculator->evaluate(expression);
+}
+
+// A script function the history calls while it updates may read but not
+// change anything, or the update would chase its own tail.
+bool ScriptApi::busy(const QString &what)
+{
+    if (!m_calculator->worksheet().isEvaluating())
+        return false;
+    m_js->throwError(u"%1 cannot change anything while the history updates"_s.arg(what));
+    return true;
 }
 
 double ScriptApi::get(const QString &name)
@@ -88,9 +112,11 @@ double ScriptApi::get(const QString &name)
 
 void ScriptApi::set(const QString &name, double value)
 {
+    if (busy(u"calc.set"_s))
+        return;
     try {
         m_calculator->environment().assign(name, value);
-        m_calculator->refreshLists();
+        m_calculator->namesChanged({name});
     } catch (const CalcError &error) {
         m_js->throwError(error.message);
     }
@@ -107,8 +133,14 @@ void ScriptApi::define(const QString &name, const QJSValue &function, int arity)
         m_js->throwError(u"calc.define needs a function"_s);
         return;
     }
+    if (busy(u"calc.define"_s))
+        return;
     if (name.isEmpty() || !name[0].isLetter() || m_calculator->environment().isBuiltinFunction(name)) {
         m_js->throwError(u"Cannot define %1"_s.arg(name));
+        return;
+    }
+    if (const int owner = m_calculator->worksheet().ownerIndex(name); owner >= 0) {
+        m_js->throwError(u"%1 is defined by %2"_s.arg(name, m_calculator->worksheet().entries()[owner].name()));
         return;
     }
     ScriptFunction script;
@@ -132,13 +164,15 @@ void ScriptApi::define(const QString &name, const QJSValue &function, int arity)
         return result.toNumber();
     };
     m_calculator->environment().defineScriptFunction(name, script);
-    m_calculator->refreshLists();
+    m_calculator->namesChanged({name});
 }
 
 void ScriptApi::undefine(const QString &name)
 {
+    if (busy(u"calc.undefine"_s))
+        return;
     m_calculator->environment().removeScriptFunction(name);
-    m_calculator->refreshLists();
+    m_calculator->namesChanged({name});
 }
 
 QString ScriptApi::format(double value)
@@ -151,6 +185,7 @@ QVariantList ScriptApi::history()
     QVariantList list;
     for (const HistoryEntry &entry : m_calculator->history()->entries()) {
         list.append(QVariantMap{
+            {u"name"_s, u'$' + QString::number(entry.id)},
             {u"expression"_s, entry.expression},
             {u"value"_s, entry.value},
             {u"result"_s, entry.result},

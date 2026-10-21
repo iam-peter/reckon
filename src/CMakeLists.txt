@@ -14,6 +14,7 @@ qt_add_qml_module(reckon_core
         core/Formatter.h core/Formatter.cpp
         core/Models.h core/Models.cpp
         core/Calculator.h core/Calculator.cpp
+        core/Worksheet.h core/Worksheet.cpp
         core/ScriptEngine.h core/ScriptEngine.cpp
         core/ScriptLibrary.h core/ScriptLibrary.cpp
 )

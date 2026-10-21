@@ -6,10 +6,12 @@
 
 A calculator in the spirit of [SpeedCrunch](https://www.speedcrunch.org/),
 written with Qt Quick: you type expressions, they go into a history with
-their results, and variables and your own functions stay around. On top
-of what SpeedCrunch does, Reckon plots `y = f(x)` curves the way the old
-macOS Grapher did and runs JavaScript against the calculator, so a few
-lines of script can define functions, fill variables and draw graphs.
+their results, and variables and your own functions stay around. The
+history is live, like QML bindings: change an entry and everything that
+depends on it follows. On top of what SpeedCrunch does, Reckon plots
+`y = f(x)` curves the way the old macOS Grapher did and runs JavaScript
+against the calculator, so a few lines of script can define functions,
+fill variables and draw graphs.
 
 ![Reckon with a few expressions, a curve plotted and a script](docs/screenshots/main.png)
 
@@ -38,13 +40,42 @@ evaluates; the result appears under the expression, right-aligned, and
 becomes `ans`. While typing, the result so far shows above the line, the
 expression is colored by what its parts are, and a popup completes the
 names of functions and variables (Tab or Enter takes one). Up and Down
-walk through earlier expressions, Escape clears the line. A click on an
-expression or a result in the display puts it back into the line.
+walk through earlier expressions, Escape clears the line. A click on a
+result in the display puts its name, such as `$3`, into the line; the
+entry's menu inserts the value or the expression instead.
 
 The side panel (Ctrl+P) has the variables, the built-in functions, a
 table of constants, the history and your own functions, each with a
 search box; a click inserts one. The keypad (Ctrl+K) has the digits,
 operators and common functions for clicking.
+
+### A live history
+
+Each entry in the display is a result with a name, `$1`, `$2` and so on,
+that later expressions can use like a variable. Variables and functions
+are bindings, as in QML: `b = a * 2` binds `b` to `a * 2` rather than
+copying a number, and `f(x) = x * k` reads `k` whenever it runs.
+
+- A double-click on an expression, or Edit in its menu, edits it in
+  place. Enter evaluates the change and every entry that depends on it,
+  however indirectly, and those entries light up briefly. Escape leaves
+  the entry as it was. Delete in the menu removes an entry.
+- The latest entry defining a name wins, wherever the entries using it
+  are. After `x = 1`, `y = x * 2`, then `x = 5`, `y` is 10; the first
+  entry is dimmed with a note saying where `x` is defined now. An entry
+  may use a name that only a later entry defines.
+- `ans` is the nearest result above the entry, skipping definitions and
+  errors, so editing that entry updates the one below.
+- Names that depend on themselves are a binding loop, an error on every
+  entry in the loop: `x = x + 1` says `x depends on itself`. Assignments
+  only go at the start of an entry, where they bind; `1 + (y = 2)` is an
+  error in the history.
+- Only what depends on a change is evaluated again, so `random()`
+  keeps its value until something it reads changes. Entries using
+  trigonometry follow the angle unit.
+- Variables and functions an entry defines are marked in the side panel
+  and go away with their entry. Clearing the history keeps their last
+  values as plain variables and functions.
 
 ### Expressions
 
@@ -54,8 +85,8 @@ operators and common functions for clicking.
   (also `<< >>`), and the comparisons `== != < > <= >=`, which give 1 or
   0. `-2^2` is -4, `2^3^2` is 512.
 - Multiplication without a sign: `2x`, `2(3 + 4)`, `2 pi`, `(1 + 1)(2 + 2)`.
-- Variables: `x = 5`, also chained, `a = b = 1`, and inside expressions,
-  `(y = 3) + y`. `pi`, `e` and `ans` are built in.
+- Variables: `x = 5`, also chained, `a = b = 1`. `pi`, `e` and `ans` are
+  built in, and `$3` is the result of entry 3.
 - Functions: `f(x, y) = x^2 + y` defines one, then `f(3, 1)`. The
   built-in ones are listed in the side panel: trigonometry (in radians or
   degrees, see the status bar), hyperbolics, logarithms, rounding,
@@ -73,6 +104,8 @@ significant digits to go by.
 The history, variables and functions are saved when Reckon closes and are
 back when it starts. Session → Save As writes them to a JSON file, Open
 brings one back, New clears everything; `reckon session.json` opens one.
+A session's entries are evaluated again when it opens, so `random()`
+draws new numbers then.
 
 ### Graphs
 
@@ -98,7 +131,7 @@ calc.define("cube", x => x * x * x)   // cube(3) now works in expressions
 calc.undefine("cube")
 calc.plot("sin(x)", "red"); calc.clearPlots()
 calc.format(1 / 3)              // "0.333333333333333", like a result
-calc.history()                  // [{expression, value, result, error}, …]
+calc.history()                  // [{name, expression, value, result, error}, …]
 print("hello", 42)              // goes to the output
 ```
 
@@ -106,7 +139,14 @@ Ctrl+Enter runs the script; scripts are saved as you type, in the
 application data folder. A function `calc.define`s takes as many
 arguments as it declares; one declaring none, such as `(...v) => …`,
 takes any number. A script named `startup` runs every time Reckon
-starts, which is the place for functions you use often. The engine is
+starts, which is the place for functions you use often.
+
+Scripts take part in the bindings. What a script function reads through
+`calc.get` or `calc.eval` is a dependency of the entry calling it, and
+`calc.set`, `calc.define` and `calc.undefine` update the entries using
+those names. A name an entry defines changes through that entry only,
+so `calc.set` on it is an error. While the history updates, a script
+function it calls may read but not change anything. The engine is
 Qt's own JavaScript (QJSEngine), so `Math` and the rest of ECMAScript
 are there; Python is not.
 
@@ -130,8 +170,9 @@ set.
 - `src/core` — no Qt Quick dependency: the `Lexer` and `Parser` of the
   expression language, the `Environment` (variables, user and script
   functions, the angle unit) the expressions evaluate against, the
-  built-in `Functions` and the table of `Constants`, the `Formatter` of
-  results, the list `Models`, `Calculator` (the facade QML talks to:
+  `Worksheet` (the history as bindings: dependencies, updates, loops),
+  the built-in `Functions` and the table of `Constants`, the `Formatter`
+  of results, the list `Models`, `Calculator` (the facade QML talks to:
   history, sessions, settings), `ScriptEngine` (QJSEngine with the `calc`
   object) and `ScriptLibrary` (the script files). QML module
   `Reckon.Core`.

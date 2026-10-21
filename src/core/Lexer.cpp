@@ -159,6 +159,24 @@ QList<Token> tokenize(const QString &s, bool lenient)
             i = j;
             continue;
         }
+        // $3: the result of history entry 3, read like a variable.
+        if (c == u'$') {
+            int j = i + 1;
+            while (j < s.size() && s[j].isDigit())
+                ++j;
+            token.length = j - i;
+            token.text = s.mid(i, j - i);
+            if (j == i + 1) {
+                if (!lenient)
+                    throw CalcError{u"Expected an entry number after $"_s, i};
+                token.type = Token::Unknown;
+            } else {
+                token.type = Token::Identifier;
+            }
+            tokens.append(token);
+            i = j;
+            continue;
+        }
         // Two-character operators before the one-character ones they start with.
         static const QStringList twoChar = {u"**"_s, u"<<"_s, u">>"_s, u"<="_s, u">="_s, u"=="_s, u"!="_s};
         const QString pair = s.mid(i, 2);

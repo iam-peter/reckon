@@ -1,5 +1,9 @@
 #include "Models.h"
 
+#include <QSet>
+
+using namespace Qt::StringLiterals;
+
 int HistoryModel::rowCount(const QModelIndex &parent) const
 {
     return parent.isValid() ? 0 : int(m_entries.size());
@@ -23,6 +27,14 @@ QVariant HistoryModel::data(const QModelIndex &index, int role) const
         return entry.errorPosition;
     case IsErrorRole:
         return !entry.error.isEmpty();
+    case NameRole:
+        return u'$' + QString::number(entry.id);
+    case IsDefinitionRole:
+        return entry.definition;
+    case ReplacedRole:
+        return entry.replaced;
+    case RevisionRole:
+        return entry.revision;
     }
     return {};
 }
@@ -33,6 +45,8 @@ QHash<int, QByteArray> HistoryModel::roleNames() const
         {ExpressionRole, "expression"}, {ValueRole, "value"},
         {ResultRole, "result"}, {ErrorRole, "error"},
         {ErrorPositionRole, "errorPosition"}, {IsErrorRole, "isError"},
+        {NameRole, "name"}, {IsDefinitionRole, "isDefinition"},
+        {ReplacedRole, "replaced"}, {RevisionRole, "revision"},
     };
 }
 
@@ -55,6 +69,41 @@ void HistoryModel::setEntries(const QList<HistoryEntry> &entries)
     m_entries = entries;
     endResetModel();
     emit countChanged();
+}
+
+void HistoryModel::sync(const QList<HistoryEntry> &entries)
+{
+    const int countBefore = int(m_entries.size());
+    QSet<int> ids;
+    for (const HistoryEntry &entry : entries)
+        ids.insert(entry.id);
+    for (int row = int(m_entries.size()) - 1; row >= 0; --row) {
+        if (!ids.contains(m_entries[row].id)) {
+            beginRemoveRows({}, row, row);
+            m_entries.removeAt(row);
+            endRemoveRows();
+        }
+    }
+    for (int row = 0; row < entries.size(); ++row) {
+        if (row < m_entries.size() && m_entries[row].id == entries[row].id) {
+            if (!(m_entries[row] == entries[row])) {
+                m_entries[row] = entries[row];
+                emit dataChanged(index(row), index(row));
+            }
+            continue;
+        }
+        beginInsertRows({}, row, row);
+        m_entries.insert(row, entries[row]);
+        endInsertRows();
+    }
+    // Rows the new list does not have at its end, as when ids repeat.
+    if (m_entries.size() > entries.size()) {
+        beginRemoveRows({}, int(entries.size()), int(m_entries.size()) - 1);
+        m_entries.resize(entries.size());
+        endRemoveRows();
+    }
+    if (m_entries.size() != countBefore)
+        emit countChanged();
 }
 
 void HistoryModel::reformat(const std::function<QString(Number)> &format)
