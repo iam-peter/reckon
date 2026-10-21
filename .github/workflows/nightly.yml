@@ -92,7 +92,7 @@ jobs:
           ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable build/src/reckon \
             --desktop-file src/logo/reckon.desktop --icon-file src/logo/reckon.svg \
             --plugin qt --output appimage
-          mv reckon-*.AppImage reckon-linux-x64.AppImage
+          mv Reckon-*.AppImage reckon-linux-x64.AppImage
 
       # A version after the one in CMake, rising with the commit time, so
       # apt upgrades every nightly
